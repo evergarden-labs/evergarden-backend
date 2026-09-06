@@ -109,7 +109,7 @@
 | `TOKEN_INVALID` | 서명 불일치, 변조, 형식 오류 | COMMON-02 | 재발급 대상이 아님 |
 | `REFRESH_TOKEN_EXPIRED` | 리프레시 토큰 만료·폐기 | AUTH-05 | 재로그인 필요 |
 | `SOCIAL_AUTH_FAILED` | 소셜 제공자 인증에 실패 | AUTH-01, AUTH-02 | `details.provider` |
-| `ADMIN_CREDENTIALS_INVALID` | 관리자 아이디·비밀번호 불일치 | ADMIN-08 | 어느 쪽이 틀렸는지 구분하지 않음 |
+| `ADMIN_CREDENTIALS_INVALID` | 관리자 아이디·비밀번호 불일치 | ADMIN-01 | 어느 쪽이 틀렸는지 구분하지 않음 |
 
 ---
 
@@ -119,11 +119,11 @@
 |---|---|---|---|
 | `FORBIDDEN` | 분류되지 않은 권한 거부 | COMMON-03 | |
 | `NOT_RESOURCE_OWNER` | 남의 일정·아카이브·게시물·댓글·타임캡슐을 수정하거나 삭제 | COMMON-03 | |
-| `NOT_COLLABORATOR` | 공동 편집자가 아닌 사용자가 편집 시도 | ARCH-11 | |
-| `COLLABORATION_CLOSED` | 종료된 공동 편집 아카이브를 **편집** 시도 | ARCH-12 | 조회는 통과 — ARCH-12 결과 칸에 명문화됨 |
-| `USER_BLOCKED` | 차단된 회원의 요청 | ADMIN-03, ADMIN-09 | `details.reason`, `details.blockedAt` |
+| `NOT_COLLABORATOR` | 공동 편집자가 아닌 사용자가 편집 시도 | ARCH-12 | |
+| `COLLABORATION_CLOSED` | 종료된 공동 편집 아카이브를 **편집** 시도 | ARCH-14 | 조회는 통과 — ARCH-14 결과 칸에 명문화됨 |
+| `USER_BLOCKED` | 차단된 회원의 요청 | ADMIN-05, ADMIN-10 | `details.reason`, `details.blockedAt` |
 | `USER_WITHDRAWN` | 탈퇴 처리된 계정의 요청 | AUTH-04 | |
-| `ADMIN_ONLY` | 일반 사용자가 관리자 API에 접근 | ADMIN-01 | |
+| `ADMIN_ONLY` | 일반 사용자가 관리자 API에 접근 | ADMIN-03 | |
 
 > **[결정 E] 공동 편집 종료 후에도 조회는 허용합니다** — 2026-09-07
 > 이 코드는 **쓰기 요청에만** 사용하고 조회는 통과시킵니다. 근거 셋:
@@ -156,7 +156,7 @@
 | `NOT_FOUND` | 위에 해당하지 않는 대상 |
 
 > 삭제된 리소스도 `404`로 응답합니다. 다만 **게시물은 예외**입니다 —
-> 코스·아카이브가 삭제돼도 게시물 자체는 남으므로(COMM-16) `200`으로 응답하고
+> 코스·아카이브가 삭제돼도 게시물 자체는 남으므로(COMM-17) `200`으로 응답하고
 > 본문에 원본이 없음을 표시합니다.
 
 ---
@@ -167,16 +167,16 @@
 |---|---|---|---|
 | `DUPLICATE_REQUEST` | 분류되지 않은 중복 요청 | COMMON-05 | |
 | `ALREADY_LIKED` | 이미 좋아요한 게시물에 다시 좋아요 | COMM-07 | |
-| `NOT_LIKED` | 좋아요하지 않은 게시물의 좋아요 취소 | COMM-18 | |
-| `ALREADY_REPORTED` | 같은 대상을 다시 신고 | COMM-09, COMM-17 | `(reporter, target)` 유니크 |
-| `ALREADY_INVITED` | 이미 초대한 사용자를 다시 초대 | ARCH-09 | |
-| `ALREADY_COLLABORATOR` | 이미 참여 중인 아카이브에 다시 참여 | ARCH-10 | |
-| `TRIP_ARCHIVE_ALREADY_LINKED` | 일정 또는 아카이브에 이미 상대가 연결됨 | ARCH-01, ARCH-15 | `archives.trip_id` 유니크 |
+| `NOT_LIKED` | 좋아요하지 않은 게시물의 좋아요 취소 | COMM-19 | |
+| `ALREADY_REPORTED` | 같은 대상을 다시 신고 | COMM-10, COMM-18 | `(reporter, target)` 유니크 |
+| `ALREADY_INVITED` | 이미 초대한 사용자를 다시 초대 | ARCH-10 | |
+| `ALREADY_COLLABORATOR` | 이미 참여 중인 아카이브에 다시 참여 | ARCH-11 | |
+| `TRIP_ARCHIVE_ALREADY_LINKED` | 일정 또는 아카이브에 이미 상대가 연결됨 | ARCH-01, ARCH-17 | `archives.trip_id` 유니크 |
 | `SOCIAL_ACCOUNT_ALREADY_LINKED` | 이미 가입에 사용된 소셜 계정 | AUTH-01 | |
 | `ONBOARDING_ALREADY_COMPLETED` | 온보딩을 마친 사용자가 다시 초기 설정 | ONB-01, ONB-02 | |
 | `CAPSULE_NOT_UNLOCKABLE` | 해제 조건이 충족되지 않은 타임캡슐 열기 | TC-05 | `details.unlockType` |
 | `CAPSULE_ALREADY_OPENED` | 이미 연 타임캡슐을 다시 열기 | TC-05 | |
-| `REPORT_ALREADY_REVIEWED` | 이미 유효·반려 판정된 신고를 다시 판정 | ADMIN-07 | |
+| `REPORT_ALREADY_REVIEWED` | 이미 유효·반려 판정된 신고를 다시 판정 | ADMIN-09 | |
 | `REGION_VISIT_COOLDOWN` | — | GARDEN-02 | ⚠️ **미사용 후보.** 아래 주석 참고 |
 
 > ⚠️ **`REGION_VISIT_COOLDOWN`은 현재 어느 오퍼레이션에서도 발생하지 않습니다.**
