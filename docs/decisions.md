@@ -146,6 +146,23 @@
 
 ---
 
+### ADR-021 · 온보딩 완료와 프로필 수정을 별도 오퍼레이션으로 둔다
+
+`PATCH /users/me/onboarding`(ONB-01)과 `PATCH /users/me`(MY-02)를 나눕니다.
+요청 스키마는 같지만 오퍼레이션은 별개입니다.
+
+**이유** — 처음에는 요청 본문이 같다는 이유로 하나로 합쳤으나, **오류 응답이 다릅니다.**
+온보딩은 한 번만 가능해 두 번째 호출이 `ONBOARDING_ALREADY_COMPLETED`인 반면
+프로필 수정은 몇 번이든 정상입니다. 합쳐 두면 이 차이를 계약으로 표현할 수 없고,
+같은 온보딩 동작인데 건너뛰기(`skip`)만 `409`가 나는 비대칭이 생깁니다.
+경로 트리에 `/users/me/onboarding/skip`만 있고 부모가 없던 문제도 함께 해소됩니다.
+
+요청 스키마 중복은 `ProfileUpdateRequest` 하나를 `$ref`로 공유해 처리합니다.
+
+**영향** — ONB-01·ONB-02·MY-02 / `ONBOARDING_ALREADY_COMPLETED`
+
+---
+
 ## C. 정책 값
 
 ### ADR-013 · 외부 API 장애는 `503`으로 응답한다
