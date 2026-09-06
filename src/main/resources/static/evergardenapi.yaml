@@ -137,7 +137,7 @@ info:
     |---|---|
     | 공통 규약 · 인증 · 온보딩 · 마이페이지 | **작성 완료** |
     | 플래너 | **작성 완료** |
-    | 지도 · 정원 | 미작성 |
+    | 지도 · 정원 | **작성 완료** |
     | 타임캡슐 | 미작성 |
     | 미디어 | 미작성 |
     | 아카이브 | 미작성 |
@@ -165,6 +165,10 @@ tags:
     description: 여행 일정(코스) 생성과 편집
   - name: 장소
     description: 한국관광 콘텐츠랩 기반 관광지 검색과 조회
+  - name: 지도
+    description: 지역 방문 인증과 지역별 관광 정보
+  - name: 정원
+    description: 방문 보상으로 모은 식물과 오브젝트
 
 paths:
 
@@ -1147,6 +1151,251 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
 
+  # ------------------------------------------------------------------
+  # 지도 — 지역 방문 인증
+  # ------------------------------------------------------------------
+
+  /region-visits:
+    post:
+      tags: [지도]
+      operationId: verifyRegionVisit
+      summary: 여행 지역 인증
+      x-user-stories: [MAP-01, MAP-04]
+      description: |
+        현재 위치가 인증하려는 지역 안에 있는지 확인하고 방문 기록을 남깁니다.
+        인증에 성공하면 정원 보상이 함께 처리되며(GARDEN-02),
+        결과는 응답의 `rewardStatus`와 `POST /region-visits` 응답의 `visitId`로 확인합니다.
+
+        **MAP-04(인증 실패)는 이 오퍼레이션의 오류 응답입니다.**
+        실패하는 별도 엔드포인트를 만들 수 없어 여기에 함께 적었습니다.
+        다만 "위치 권한을 허용하지 않은" 경우는 앱에서 막히므로 서버까지 오지 않습니다.
+
+        좌표에서 지역을 판정하는 방식은 콘텐츠랩 위치기반 관광정보의 `areacode`를 채택합니다(ADR-004).
+        요청에 `regionCode`를 함께 보내면 서버 판정 결과와 대조해 다르면 거절합니다.
+
+        > **[가정] 쿨다운이 인증을 막지는 않습니다.**
+        > GARDEN-02가 "7일에 한 번만 **성장에 반영**된다"이므로,
+        > 7일 안에 같은 지역을 다시 인증해도 기록은 남고 `rewardStatus`만 `COOLDOWN`이 됩니다.
+        > 인증 자체를 거부하기로 하면 `REGION_VISIT_COOLDOWN`을 `409`로 되살려야 합니다.
+        > 결정 주체: 기획.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegionVisitRequest' }
+      responses:
+        '200':
+          description: 인증 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/RegionVisitResult' }
+                  meta: { type: 'null' }
+        '400':
+          description: |
+            `LOCATION_MISMATCH` — 보낸 좌표가 인증하려는 지역에 속하지 않음
+            `LOCATION_ACCURACY_TOO_LOW` — 위치 정확도가 100m를 넘음(ADR-016)
+            `REGION_NOT_DETERMINED` — 좌표로 지역을 판정하지 못함
+            `INVALID_REQUEST` — 좌표 형식 오류 등
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: |
+            `REGION_NOT_FOUND` — 존재하지 않는 지역 코드
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '503':
+          description: |
+            `TOUR_API_UNAVAILABLE` — 지역 판정에 쓰는 콘텐츠랩 조회가 실패함
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /users/me/regions:
+    get:
+      tags: [지도]
+      operationId: listMyRegions
+      summary: 방문 지역 확인
+      x-user-stories: [MAP-02]
+      description: |
+        지도를 칠하는 데 필요한 데이터입니다.
+        **방문한 지역만이 아니라 전체 지역을 반환하고 `visited`로 구분합니다** —
+        MAP-02의 결과가 "방문한 지역이 **시각적으로 구분되어** 표시된다"이므로
+        앱이 미방문 지역까지 알아야 색을 나눠 칠할 수 있습니다.
+
+        페이지를 나누지 않습니다. 시/도는 17개, 시군구도 250개 수준이라
+        한 번에 받아 지도에 칠하는 편이 낫습니다.
+      parameters:
+        - name: level
+          in: query
+          required: false
+          description: 반환할 지역 단위
+          schema: { type: string, enum: [SIDO, SIGUNGU], default: SIDO }
+      responses:
+        '200':
+          description: 조회 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/RegionVisitStatus' }
+                  meta: { type: 'null' }
+
+  /regions/{regionCode}:
+    get:
+      tags: [지도]
+      operationId: getRegion
+      summary: 지역 상세 정보 확인
+      x-user-stories: [MAP-03]
+      description: |
+        지도에서 지역을 눌렀을 때 보여줄 정보입니다.
+        지역 이름과 중심 좌표, 내 방문 여부, 그 지역에서 해금할 수 있는 정원 오브젝트를 반환합니다.
+
+        그 지역의 관광지 목록은 `GET /regions/{regionCode}/places`에서 따로 받습니다.
+      parameters:
+        - $ref: '#/components/parameters/RegionCode'
+      responses:
+        '200':
+          description: 조회 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/RegionDetail' }
+                  meta: { type: 'null' }
+        '404':
+          description: |
+            `REGION_NOT_FOUND`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /regions/{regionCode}/places:
+    get:
+      tags: [지도]
+      operationId: listRegionPlaces
+      summary: 지역별 관광 정보 조회
+      x-user-stories: [MAP-03]
+      description: |
+        지역에 속한 관광지와 음식점을 분류별로 훑어봅니다.
+        여기서 고른 장소를 일정에 넣는 것은 `POST /trips/{tripId}/places`입니다.
+
+        > **`GET /places/search?regionCode=`와 결과가 겹칩니다.**
+        > 검색(PLAN-06)은 키워드 중심이고 이 오퍼레이션은 지도에서 지역을 눌러 훑어보는
+        > 진입점이라 스토리를 나눠 두었지만, 반환하는 데이터는 같습니다.
+        > 두 화면의 요구가 끝까지 같으면 나중에 하나로 합칠 수 있습니다.
+      parameters:
+        - $ref: '#/components/parameters/RegionCode'
+        - name: contentTypeId
+          in: query
+          required: false
+          description: 관광지·음식점·숙박 등 콘텐츠랩 분류 코드
+          schema: { type: string }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: 조회 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/PlaceSummary' }
+                  meta: { $ref: '#/components/schemas/PageMeta' }
+        '404':
+          description: |
+            `REGION_NOT_FOUND`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '503':
+          description: |
+            `TOUR_API_UNAVAILABLE`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ------------------------------------------------------------------
+  # 정원
+  # ------------------------------------------------------------------
+
+  /garden:
+    get:
+      tags: [정원]
+      operationId: getMyGarden
+      summary: 정원 조회
+      x-user-stories: [GARDEN-01]
+      description: |
+        정원에 배치된 식물과 오브젝트, 각각의 성장 단계를 반환합니다.
+        아직 해금하지 않은 것은 포함하지 않습니다 —
+        어느 지역에서 무엇을 얻을 수 있는지는 `GET /regions/{regionCode}`에서 봅니다.
+
+        > **[가정] 정원을 사용자당 하나로 두었습니다.**
+        > 기획서에는 "아카이빙된 지역의 지도가 개인의 추억 정원으로 변모한다"고 되어 있어
+        > 지역별 정원으로 읽힐 여지가 있으나, GARDEN-01은 "정원 메뉴에 진입한다"로
+        > 단수입니다. 지역별로 나누려면 이 경로에 지역 구분이 들어가야 합니다.
+        > 결정 주체: 기획.
+      responses:
+        '200':
+          description: 조회 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Garden' }
+                  meta: { type: 'null' }
+
+  /region-visits/{visitId}/reward:
+    get:
+      tags: [정원]
+      operationId: getVisitReward
+      summary: 지역 보상 확인
+      x-user-stories: [GARDEN-02]
+      description: |
+        방문 인증 한 건이 정원에 무엇을 남겼는지 확인합니다.
+        처음 방문한 지역이면 오브젝트가 해금되고, 이미 해금한 지역이면 성장합니다.
+        7일 쿨다운 안에 다시 인증했다면 `COOLDOWN`이며 아무것도 바뀌지 않습니다(ADR-018).
+
+        인증 직후 결과는 `POST /region-visits` 응답에도 들어 있습니다.
+        이 오퍼레이션은 보상 연출을 다시 보거나, 인증 응답을 놓쳤을 때 쓰기 위한 것입니다.
+      parameters:
+        - $ref: '#/components/parameters/VisitId'
+      responses:
+        '200':
+          description: 조회 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/VisitReward' }
+                  meta: { type: 'null' }
+        '403':
+          description: |
+            `NOT_RESOURCE_OWNER` — 남의 방문 기록
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: |
+            `REGION_VISIT_NOT_FOUND`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+
 components:
 
   securitySchemes:
@@ -1205,6 +1454,19 @@ components:
 
     PlaceId:
       name: placeId
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+
+    RegionCode:
+      name: regionCode
+      in: path
+      required: true
+      description: 콘텐츠랩 areaCode 또는 sigunguCode(ADR-004)
+      schema: { type: string }
+
+    VisitId:
+      name: visitId
       in: path
       required: true
       schema: { type: integer, format: int64 }
@@ -1569,3 +1831,131 @@ components:
               type: array
               description: 관광 사진 정보에서 받은 공공저작물 이미지
               items: { type: string, format: uri }
+
+    # --- 지도 · 방문 인증 ---
+
+    RegionVisitRequest:
+      type: object
+      required: [lat, lng, accuracyMeters]
+      properties:
+        lat: { type: number, format: double }
+        lng: { type: number, format: double }
+        accuracyMeters:
+          type: number
+          description: |
+            단말이 좌표와 함께 알려주는 정확도(iOS `horizontalAccuracy`, Android `getAccuracy()`).
+            100m를 넘으면 거절합니다(ADR-016)
+        regionCode:
+          type: [string, 'null']
+          description: |
+            앱이 판단한 현재 지역. 보내면 서버 판정 결과와 대조하고,
+            다르면 `LOCATION_MISMATCH`로 거절합니다. 생략하면 서버 판정을 그대로 씁니다
+
+    RewardStatus:
+      type: string
+      enum: [UNLOCKED, GROWN, COOLDOWN, NONE]
+      description: |
+        `UNLOCKED` 처음 방문해 오브젝트 해금 · `GROWN` 기존 오브젝트가 성장 ·
+        `COOLDOWN` 7일 안에 재인증이라 변화 없음 · `NONE` 그 지역에 지정된 오브젝트가 없음
+
+    RegionVisitResult:
+      type: object
+      required: [visitId, region, verifiedAt, isFirstVisit, rewardStatus]
+      properties:
+        visitId: { type: integer, format: int64 }
+        region: { $ref: '#/components/schemas/RegionSummary' }
+        verifiedAt: { type: string, format: date-time }
+        isFirstVisit: { type: boolean }
+        rewardStatus: { $ref: '#/components/schemas/RewardStatus' }
+        reward:
+          oneOf:
+            - $ref: '#/components/schemas/VisitReward'
+            - type: 'null'
+          description: 보상 상세. `rewardStatus`가 `NONE`이면 `null`
+
+    RegionVisitStatus:
+      type: object
+      required: [region, visited]
+      properties:
+        region: { $ref: '#/components/schemas/RegionSummary' }
+        visited: { type: boolean }
+        visitCount: { type: integer, description: 인증 횟수 }
+        lastVisitedAt: { type: [string, 'null'], format: date-time }
+
+    RegionDetail:
+      allOf:
+        - $ref: '#/components/schemas/RegionSummary'
+        - type: object
+          properties:
+            centerLat: { type: number, format: double }
+            centerLng: { type: number, format: double }
+            visited: { type: boolean }
+            visitCount: { type: integer }
+            availableGardenObjects:
+              type: array
+              description: 이 지역에서 얻을 수 있는 식물·오브젝트
+              items: { $ref: '#/components/schemas/GardenObject' }
+
+    # --- 정원 ---
+
+    GardenObjectType:
+      type: string
+      enum: [PLANT, OBJECT]
+
+    GardenObject:
+      type: object
+      description: 도감 정보. 사용자가 가졌는지와 무관한 마스터 데이터입니다
+      required: [gardenObjectId, name, type, maxStage]
+      properties:
+        gardenObjectId: { type: integer, format: int64 }
+        name: { type: string }
+        type: { $ref: '#/components/schemas/GardenObjectType' }
+        imageUrl: { type: [string, 'null'], format: uri }
+        maxStage: { type: integer, minimum: 1, description: 더 자랄 수 없는 단계 }
+        region:
+          oneOf:
+            - $ref: '#/components/schemas/RegionSummary'
+            - type: 'null'
+          description: 지역 전용이면 해당 지역, 공통이면 `null`
+
+    Garden:
+      type: object
+      required: [objects, unlockedCount, totalCount]
+      properties:
+        objects:
+          type: array
+          items: { $ref: '#/components/schemas/UserGardenObject' }
+        unlockedCount: { type: integer, description: 해금한 오브젝트 수 }
+        totalCount: { type: integer, description: 도감 전체 오브젝트 수 }
+
+    UserGardenObject:
+      type: object
+      required: [userGardenObjectId, gardenObject, stage]
+      properties:
+        userGardenObjectId: { type: integer, format: int64 }
+        gardenObject: { $ref: '#/components/schemas/GardenObject' }
+        stage: { type: integer, minimum: 1, description: 현재 성장 단계 }
+        positionX: { type: [integer, 'null'], description: 정원 안 배치 좌표 }
+        positionY: { type: [integer, 'null'] }
+        unlockedAt: { type: string, format: date-time }
+        lastGrownAt: { type: [string, 'null'], format: date-time }
+
+    VisitReward:
+      type: object
+      required: [visitId, region, rewardStatus]
+      properties:
+        visitId: { type: integer, format: int64 }
+        region: { $ref: '#/components/schemas/RegionSummary' }
+        rewardStatus: { $ref: '#/components/schemas/RewardStatus' }
+        gardenObject:
+          oneOf:
+            - $ref: '#/components/schemas/GardenObject'
+            - type: 'null'
+        previousStage:
+          type: [integer, 'null']
+          description: 성장 전 단계. 해금이면 `null`
+        currentStage: { type: [integer, 'null'] }
+        nextAvailableAt:
+          type: [string, 'null']
+          format: date-time
+          description: '`rewardStatus`가 `COOLDOWN`일 때 다음 성장 가능 시각(ADR-018)'

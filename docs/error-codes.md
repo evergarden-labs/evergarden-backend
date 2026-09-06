@@ -152,6 +152,7 @@
 | `POST_NOT_FOUND` | 게시물 |
 | `COMMENT_NOT_FOUND` | 댓글·대댓글 |
 | `REPORT_NOT_FOUND` | 신고 |
+| `REGION_VISIT_NOT_FOUND` | 방문 인증 기록 |
 | `NOT_FOUND` | 위에 해당하지 않는 대상 |
 
 > 삭제된 리소스도 `404`로 응답합니다. 다만 **게시물은 예외**입니다 —
@@ -176,7 +177,14 @@
 | `CAPSULE_NOT_UNLOCKABLE` | 해제 조건이 충족되지 않은 타임캡슐 열기 | TC-05 | `details.unlockType` |
 | `CAPSULE_ALREADY_OPENED` | 이미 연 타임캡슐을 다시 열기 | TC-05 | |
 | `REPORT_ALREADY_REVIEWED` | 이미 유효·반려 판정된 신고를 다시 판정 | ADMIN-07 | |
-| `REGION_VISIT_COOLDOWN` | 쿨다운 중에 같은 지역을 다시 인증 | GARDEN-02 | 간격 **7일** — GARDEN-02에 명문화됨 · `details.availableAt` |
+| `REGION_VISIT_COOLDOWN` | — | GARDEN-02 | ⚠️ **미사용 후보.** 아래 주석 참고 |
+
+> ⚠️ **`REGION_VISIT_COOLDOWN`은 현재 어느 오퍼레이션에서도 발생하지 않습니다.**
+> GARDEN-02의 문구가 "같은 지역은 **7일에 한 번만 성장에 반영된다**"이므로,
+> 쿨다운은 **인증 자체를 막는 것이 아니라 보상만 건너뛰는 것**으로 해석했습니다.
+> 그래서 `POST /region-visits`는 쿨다운 중에도 `200`으로 성공하고
+> 응답의 `rewardStatus: COOLDOWN`으로 알립니다.
+> 인증 자체를 거부하기로 정하면 이 코드를 `409`로 되살립니다. 결정 주체: 기획.
 
 > **[결정 F] 같은 지역 재인증 쿨다운은 `7일`** — 2026-09-07, 기획 확정
 > ERD의 `user_garden_objects.last_grown_at` 기준으로 판정합니다.
@@ -235,4 +243,5 @@
 | `409` 계열 전반 | ADR-006 (중복은 DB 제약으로 차단) |
 | `NICKNAME_DUPLICATED` (미채택) | ADR 문서 D절 — 닉네임 중복 허용 여부 미정 |
 
-**총 51개 코드** — 400: 10 · 401: 6 · 403: 7 · 404: 13 · 409: 13 · 500·503: 3
+**총 52개 코드** — 400: 10 · 401: 6 · 403: 7 · 404: 14 · 409: 13 · 500·503: 3
+(이 중 `REGION_VISIT_COOLDOWN` 1개는 현재 미사용 상태입니다.)
