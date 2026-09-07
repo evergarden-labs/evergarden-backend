@@ -359,12 +359,10 @@ paths:
         `PATCH /users/me/onboarding`을 씁니다(ADR-021).
         온보딩을 마치지 않은 사용자가 이 오퍼레이션을 호출해도 프로필만 바뀝니다.
 
-        > **[가정] 닉네임 규칙이 정해지지 않았습니다.**
-        > 중복 허용 여부, 사용 가능한 문자, 금칙어 정책이 근거 문서에 없습니다.
-        > 이 문서는 ERD의 `users.nickname varchar(20)`만 근거로 길이 제약만 두었고,
-        > **중복 검사는 넣지 않았습니다.** 중복을 막기로 하면
-        > `NICKNAME_DUPLICATED` 코드를 오류 코드 표에 추가해야 합니다.
-        > 결정 주체: 기획.
+        **닉네임은 중복될 수 없습니다**(ADR-025). 이미 쓰이고 있으면 `409`입니다.
+
+        > **[가정] 사용 가능한 문자와 금칙어 정책은 아직 없습니다.**
+        > 길이 제약(1~20자)만 두었습니다. 결정 주체: 기획.
       requestBody:
         required: true
         content:
@@ -383,6 +381,12 @@ paths:
         '400':
           description: |
             `INVALID_REQUEST` — 닉네임 길이 위반 등 검증 실패
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: |
+            `NICKNAME_DUPLICATED` — 이미 쓰이고 있는 닉네임(ADR-025)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -428,7 +432,7 @@ paths:
         온보딩은 한 번만 할 수 있어 두 번째 호출이 `409`인 반면,
         프로필 수정은 몇 번이든 가능합니다(ADR-021).
 
-        닉네임 규칙에 대한 [가정]은 `PATCH /users/me`와 동일합니다.
+        닉네임은 중복될 수 없습니다(ADR-025). 문자·금칙어 정책에 대한 [가정]은 `PATCH /users/me`와 같습니다.
       requestBody:
         required: true
         content:
@@ -453,6 +457,7 @@ paths:
         '409':
           description: |
             `ONBOARDING_ALREADY_COMPLETED` — 이미 온보딩을 마친 사용자
+            `NICKNAME_DUPLICATED` — 이미 쓰이고 있는 닉네임(ADR-025)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -470,8 +475,9 @@ paths:
         > **[가정] 건너뛴 사용자의 닉네임을 어떻게 만들지 정해지지 않았습니다.**
         > 커뮤니티에 글을 쓰려면 표시할 이름이 있어야 하는데
         > ONB-02에는 이 내용이 없습니다.
-        > 이 문서는 서버가 임의의 기본 닉네임을 생성한다고 가정했으며,
+        > 이 문서는 서버가 기본 닉네임을 생성한다고 가정했으며,
         > **형식(예: `여행자1234`)은 정하지 않았습니다.**
+        > 닉네임은 중복될 수 없으므로(ADR-025) 생성 규칙에 유일성 보장이 들어가야 합니다.
         > 결정 주체: 기획.
       responses:
         '200':
@@ -3514,6 +3520,47 @@ paths:
   # ------------------------------------------------------------------
   # 커뮤니티 — 작성자 프로필
   # ------------------------------------------------------------------
+
+  /users/search:
+    get:
+      tags: [커뮤니티]
+      operationId: searchUsers
+      summary: 닉네임으로 사용자 검색
+      x-user-stories: [ARCH-10]
+      description: |
+        공동 편집자로 초대할 사람을 닉네임으로 찾습니다(ADR-024).
+        찾은 사용자의 `userId`를 `POST /archives/{archiveId}/collaborators`에 넘깁니다.
+
+        **정확히 일치하는 닉네임만 반환합니다.** 부분 일치로 훑게 하면
+        닉네임 목록을 긁어 모으는 통로가 됩니다.
+        닉네임은 유일하므로(ADR-025) 결과는 **0개 아니면 1개**입니다.
+
+        탈퇴하거나 차단된 회원은 결과에 나오지 않습니다.
+      parameters:
+        - name: nickname
+          in: query
+          required: true
+          description: 정확히 일치하는 닉네임
+          schema: { type: string, minLength: 1, maxLength: 20 }
+      responses:
+        '200':
+          description: |
+            검색 성공. 일치하는 사용자가 없으면 빈 배열입니다
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/PublicProfile' }
+                  meta: { type: 'null' }
+        '400':
+          description: |
+            `INVALID_REQUEST` — `nickname`이 비어 있음
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   /users/{userId}:
     get:

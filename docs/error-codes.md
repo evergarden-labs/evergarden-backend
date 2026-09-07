@@ -176,6 +176,7 @@
 | `TRIP_ARCHIVE_ALREADY_LINKED` | 일정 또는 아카이브에 이미 상대가 연결됨 | ARCH-01, ARCH-17 | `archives.trip_id` 유니크 |
 | `SOCIAL_ACCOUNT_ALREADY_LINKED` | 이미 가입에 사용된 소셜 계정 | AUTH-01 | |
 | `ONBOARDING_ALREADY_COMPLETED` | 온보딩을 마친 사용자가 다시 초기 설정 | ONB-01, ONB-02 | |
+| `NICKNAME_DUPLICATED` | 이미 쓰이고 있는 닉네임 | ONB-01, MY-02 | `users.nickname` UNIQUE(ADR-025) |
 | `CAPSULE_NOT_UNLOCKABLE` | 해제 조건이 충족되지 않은 타임캡슐 열기 | TC-05 | `details.unlockType` |
 | `CAPSULE_ALREADY_OPENED` | 이미 연 타임캡슐을 다시 열기 | TC-05 | |
 | `REPORT_ALREADY_REVIEWED` | 이미 유효·반려 판정된 신고를 다시 판정 | ADMIN-09 | |
@@ -245,5 +246,5 @@
 | `409` 계열 전반 | ADR-006 (중복은 DB 제약으로 차단) |
 | `NICKNAME_DUPLICATED` (미채택) | ADR 문서 D절 — 닉네임 중복 허용 여부 미정 |
 
-**총 54개 코드** — 400: 11 · 401: 6 · 403: 7 · 404: 15 · 409: 13 · 500·503: 3
+**총 55개 코드** — 400: 11 · 401: 6 · 403: 7 · 404: 15 · 409: 14 · 500·503: 3
 (이 중 `REGION_VISIT_COOLDOWN` 1개는 현재 미사용 상태입니다.)
