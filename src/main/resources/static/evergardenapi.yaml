@@ -21,6 +21,7 @@ info:
     | ERD | 테이블 25개 |
     | 오류 코드 표 | `docs/error-codes.md` |
     | 결정 기록(ADR) | `docs/decisions.md` |
+    | 실시간 편집 메시지 | `docs/realtime-editing.md` (WebSocket, OpenAPI 밖) |
 
     모든 오퍼레이션에는 근거가 된 스토리 ID를 `x-user-stories`로 붙였습니다.
 
@@ -2665,10 +2666,12 @@ paths:
       description: |
         실시간 공동 편집에 접속할 WebSocket 주소와 구독할 토픽을 받습니다.
 
-        > **실시간 편집 프로토콜 자체는 이 문서의 범위 밖입니다.**
-        > OpenAPI는 HTTP 요청·응답만 기술합니다.
-        > 어떤 메시지를 주고받는지, 두 사람이 같은 사진을 동시에 옮기면 무엇이 이기는지는
-        > **별도 문서로 정의해야 합니다.** 이 오퍼레이션은 접속에 필요한 정보만 넘겨줍니다.
+        **실시간 편집 프로토콜은 `docs/realtime-editing.md`에 있습니다.**
+        OpenAPI는 HTTP 요청·응답만 기술하므로 WebSocket 메시지는 그쪽에서 정의합니다.
+        이 오퍼레이션은 접속에 필요한 정보만 넘겨줍니다.
+
+        **편집 자체는 WebSocket으로 하지 않습니다.** 저장은 기존 HTTP 오퍼레이션으로 하고,
+        WebSocket은 다른 참여자에게 변경을 알리는 통로입니다(ADR-051).
 
         **충돌 처리는 마지막 쓰기 우선입니다**(ADR-028).
         두 사람이 같은 사진을 동시에 옮기면 **나중에 도착한 변경이 이깁니다.**
@@ -5433,20 +5436,23 @@ components:
     CollaborationSession:
       type: object
       description: |
-        **[가정]** 메시지 규격이 정해지지 않아 이 응답 형태도 잠정입니다(ADR-028).
-        결정 주체: 백엔드.
-      required: [websocketUrl, topic]
+        STOMP over WebSocket 접속 정보(ADR-051).
+        메시지 규격은 `docs/realtime-editing.md`에 있습니다
+      required: [websocketUrl, topic, activeEditors]
       properties:
         websocketUrl:
           type: string
           format: uri
-          description: 접속할 WebSocket 주소
+          description: 접속할 WebSocket 주소. CONNECT 프레임에 액세스 토큰을 실습니다
         topic:
           type: string
-          description: 이 아카이브의 변경을 받을 구독 경로
-        activeEditorCount:
-          type: [integer, 'null']
-          description: 지금 접속 중인 인원. 표시 여부가 미정이라 `null`일 수 있습니다
+          description: '구독 경로. `/topic/archives/{archiveId}` 형태입니다'
+        activeEditors:
+          type: array
+          description: |
+            지금 접속해 있는 참여자. 구독을 시작한 뒤에는
+            `editor.joined`·`editor.left` 이벤트로 갱신합니다
+          items: { $ref: '#/components/schemas/Collaborator' }
 
     ArchiveUpdateRequest:
       type: object
