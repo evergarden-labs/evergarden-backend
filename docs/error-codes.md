@@ -82,6 +82,7 @@
 | `INVALID_UNLOCK_CONDITION` | 타임캡슐 해제 조건이 날짜·위치 중 하나로 정해지지 않음 | TC-01 | |
 | `INVALID_MEDIA_FORMAT` | 허용하지 않는 파일 형식 | MEDIA-01 | 사진 JPEG·PNG·HEIC·WEBP / 영상 MP4·MOV |
 | `MEDIA_TOO_LARGE` | 파일 용량 초과 | MEDIA-01 | 사진 10MB · 영상 200MB(3분) · 1회 20개 |
+| `MEDIA_UPLOAD_INCOMPLETE` | 스토리지에 파일이 올라오지 않은 상태로 업로드 완료를 통보함 | MEDIA-01 | presigned URL 방식(ADR-023) |
 | `LOCATION_MISMATCH` | 보낸 좌표가 인증하려는 지역에 속하지 않음 | MAP-01, MAP-04 | |
 | `LOCATION_ACCURACY_TOO_LOW` | 위치 정확도가 인증 기준에 못 미침 | MAP-04 | 임계값 **100m** |
 | `REGION_NOT_DETERMINED` | 좌표로 지역을 판정하지 못함(주변 관광지 없음 등) | MAP-04 | |
@@ -244,5 +245,5 @@
 | `409` 계열 전반 | ADR-006 (중복은 DB 제약으로 차단) |
 | `NICKNAME_DUPLICATED` (미채택) | ADR 문서 D절 — 닉네임 중복 허용 여부 미정 |
 
-**총 53개 코드** — 400: 10 · 401: 6 · 403: 7 · 404: 15 · 409: 13 · 500·503: 3
+**총 54개 코드** — 400: 11 · 401: 6 · 403: 7 · 404: 15 · 409: 13 · 500·503: 3
 (이 중 `REGION_VISIT_COOLDOWN` 1개는 현재 미사용 상태입니다.)
