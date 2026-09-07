@@ -275,7 +275,7 @@ CREATE TABLE archives (
     trip_id              BIGINT,
     title                VARCHAR(60) NOT NULL,
     theme                VARCHAR(12) NOT NULL,
-    primary_color        CHAR(7),
+    primary_color        VARCHAR(7),
     cover_item_id        BIGINT,
     start_date           DATE,
     end_date             DATE,

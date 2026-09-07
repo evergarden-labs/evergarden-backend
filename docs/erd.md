@@ -200,7 +200,7 @@
 | `trip_id` | BIGINT | FK,UK | Y | → trips. ON DELETE SET NULL. 1:1이되 각자 독립 (ADR-001) |
 | `title` | VARCHAR(60) |  | N |  |
 | `theme` | VARCHAR(12) |  | N | BOOK / POLAROID / ALBUM / SCRAPBOOK |
-| `primary_color` | CHAR(7) |  | Y | #RRGGBB |
+| `primary_color` | VARCHAR(7) |  | Y | #RRGGBB |
 | `cover_item_id` | BIGINT | FK | Y | → archive_items. 대표 사진 (ARCH-08) |
 | `start_date` | DATE |  | Y | 파생값 — 담긴 사진 taken_at의 최솟값 (ADR-030) |
 | `end_date` | DATE |  | Y | 파생값 — 담긴 사진 taken_at의 최댓값 |

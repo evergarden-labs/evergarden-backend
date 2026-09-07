@@ -114,6 +114,8 @@ policy:
   sanction:
     warning-threshold: 1                # 유효 신고 누적 1회 → 경고
     block-threshold: 3                  # 유효 신고 누적 3회 → 차단
+  withdrawal:
+    restore-grace-days: 30              # 탈퇴 후 복구 가능 기간 (ADR-054)
   nearby-places:
     radius-meters: 5000                 # 주변 추천 반경 (ADR-042)
 
