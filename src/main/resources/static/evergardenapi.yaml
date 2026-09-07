@@ -933,9 +933,8 @@ paths:
         **장소를 추천해 주지는 않습니다** — 순서 정리까지가 이 오퍼레이션의 범위입니다(ADR-020).
         얼마나 나아지는지는 `currentDistanceMeters`와 `proposedDistanceMeters`로 비교합니다.
 
-        > **[가정] 구현 방식이 정해지지 않았습니다.**
-        > 좌표 기반 자체 계산인지 외부 모델 호출인지 미정입니다.
-        > 자체 계산이면 아래 `503` 응답은 발생하지 않습니다. 결정 주체: 백엔드.
+        **좌표 기반 자체 계산입니다**(ADR-032). 외부 모델을 호출하지 않으므로
+        비용이 들지 않고, 같은 입력에는 항상 같은 결과가 나오며, 외부 장애로 실패하지 않습니다.
       parameters:
         - $ref: '#/components/parameters/TripId'
       requestBody:
@@ -968,12 +967,6 @@ paths:
         '404':
           description: |
             `TRIP_NOT_FOUND` · `PLACE_NOT_FOUND`
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-        '503':
-          description: |
-            `AI_SERVICE_UNAVAILABLE` — 외부 모델을 호출하는 방식으로 구현한 경우에만 발생합니다
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
