@@ -22,12 +22,12 @@
 | 컬럼 | 타입 | 키 | NULL | 비고 |
 |---|---|---|---|---|
 | `id` | BIGSERIAL | PK | N |  |
-| `nickname` | VARCHAR(20) | UK | N | 중복 불가 (ADR-025). 건너뛴 사용자는 여행자+숫자 자동 생성 (ADR-050) |
+| `nickname` | VARCHAR(20) | UK | N | 한글·영문·숫자만 (ADR-053) · 중복 불가 (ADR-025) · 건너뛴 사용자는 여행자+숫자 (ADR-050) |
 | `profile_image_url` | TEXT |  | Y |  |
 | `status` | VARCHAR(20) |  | N | ACTIVE / WARNED / BLOCKED / WITHDRAWN |
 | `valid_report_count` | INT |  | N | 유효 판정된 누적 신고. 1이면 경고, 3이면 차단 (ADMIN-10) |
 | `onboarding_completed` | BOOLEAN |  | N | 기본값 false |
-| `withdrawn_at` | TIMESTAMPTZ |  | Y | 탈퇴는 삭제가 아니라 상태 전환 (ADR-007) |
+| `withdrawn_at` | TIMESTAMPTZ |  | Y | 탈퇴 시각. **+30일이 복구 기한** (ADR-054). 지나면 배치가 닉네임·프로필을 익명화 |
 
 ## `social_accounts` · 연결된 소셜 계정
 

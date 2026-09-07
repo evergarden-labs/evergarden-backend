@@ -17,7 +17,7 @@ info:
 
     | 근거 문서 | 위치 |
     |---|---|
-    | 유저 스토리 카탈로그 | `docs/user-stories.tsv` (102행) |
+    | 유저 스토리 카탈로그 | `docs/user-stories.tsv` (103행) |
     | ERD | 테이블 25개 |
     | 오류 코드 표 | `docs/error-codes.md` |
     | 결정 기록(ADR) | `docs/decisions.md` |
@@ -250,13 +250,77 @@ paths:
         '403':
           description: |
             `USER_BLOCKED` — 차단된 회원. `details.reason`·`details.blockedAt`으로 사유 안내(AUTH-06)
-            `USER_WITHDRAWN` — 탈퇴한 회원
+            `USER_WITHDRAWN` — 탈퇴한 회원. 유예 중이면 `details.restorableUntil`이 담기고,
+            앱은 `POST /auth/restore`로 복구를 권합니다(ADR-054)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '409':
           description: |
             `SOCIAL_ACCOUNT_ALREADY_LINKED` — 이미 다른 계정에 연결된 소셜 계정
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /auth/restore:
+    post:
+      tags: [인증]
+      operationId: restoreAccount
+      summary: 탈퇴한 계정 복구
+      x-user-stories: [AUTH-07]
+      security: []
+      description: |
+        30일 유예 안에 있는 계정을 되살립니다(ADR-054).
+        탈퇴할 때 쓰던 소셜 계정의 토큰으로 본인을 확인합니다 —
+        로그인이 막혀 있어 액세스 토큰을 쓸 수 없습니다.
+
+        복구하면 `users.status`가 `ACTIVE`로 돌아가고 닉네임·프로필이 그대로 살아납니다.
+        게시물과 댓글의 작성자 표시도 원래 닉네임으로 돌아옵니다.
+
+        **되돌아오지 않는 것이 하나 있습니다.** 탈퇴할 때 종료된 공동 편집은
+        복구해도 다시 열리지 않습니다 — 그 사이 참여자들이 이미 복제해 갔을 수 있어서
+        되돌리면 오히려 상태가 엉킵니다.
+
+        유예가 지났으면 `RESTORE_PERIOD_EXPIRED`입니다. 새로 가입해야 합니다.
+      parameters:
+        - $ref: '#/components/parameters/Provider'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [socialAccessToken]
+              properties:
+                socialAccessToken:
+                  type: string
+                  description: 탈퇴할 때 연결돼 있던 소셜 계정의 액세스 토큰
+      responses:
+        '200':
+          description: 복구 완료. 바로 로그인 상태가 됩니다
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/AuthResult' }
+                  meta: { type: 'null' }
+        '400':
+          description: |
+            `RESTORE_PERIOD_EXPIRED` — 30일 유예가 지났습니다. 새로 가입해야 합니다
+            `INVALID_REQUEST` — 탈퇴 상태가 아닌 계정
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: |
+            `SOCIAL_AUTH_FAILED` — 소셜 제공자가 토큰을 거부함
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: |
+            `USER_NOT_FOUND` — 그 소셜 계정으로 탈퇴한 기록이 없음
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -360,8 +424,8 @@ paths:
 
         **닉네임은 중복될 수 없습니다**(ADR-025). 이미 쓰이고 있으면 `409`입니다.
 
-        > **[가정] 사용 가능한 문자와 금칙어 정책은 아직 없습니다.**
-        > 길이 제약(1~20자)만 두었습니다. 결정 주체: 기획.
+        **한글·영문·숫자만 쓸 수 있습니다**(ADR-053). 공백과 특수문자는 거절합니다.
+        금칙어 필터는 두지 않고 신고(COMM-10)로 대응합니다.
       requestBody:
         required: true
         content:
@@ -409,7 +473,6 @@ paths:
         >
         > 이 문서는 **계정 상태 전환과 토큰 폐기까지만** 계약으로 확정했습니다.
         > 결정 주체: 기획 + 법무.
-      x-implementation-status: not-implemented
       responses:
         '200':
           description: 탈퇴 처리 완료
@@ -431,7 +494,7 @@ paths:
         온보딩은 한 번만 할 수 있어 두 번째 호출이 `409`인 반면,
         프로필 수정은 몇 번이든 가능합니다(ADR-021).
 
-        닉네임은 중복될 수 없습니다(ADR-025). 문자·금칙어 정책에 대한 [가정]은 `PATCH /users/me`와 같습니다.
+        닉네임은 한글·영문·숫자만 쓸 수 있고 중복될 수 없습니다(ADR-053 · ADR-025).
       requestBody:
         required: true
         content:
@@ -4707,9 +4770,10 @@ components:
           type: string
           minLength: 1
           maxLength: 20
+          pattern: '^[가-힣a-zA-Z0-9]{1,20}$'
           description: |
+            한글·영문·숫자만 허용합니다. 공백과 특수문자는 쓸 수 없습니다(ADR-053).
             중복될 수 없습니다(ADR-025). 이미 쓰이는 닉네임이면 `409 NICKNAME_DUPLICATED`입니다.
-            **[가정]** 사용 가능한 문자와 금칙어 정책은 아직 없습니다. 결정 주체: 기획.
         profileImageUrl:
           type: [string, 'null']
           format: uri

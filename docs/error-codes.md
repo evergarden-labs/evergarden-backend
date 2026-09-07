@@ -6,7 +6,7 @@
 > API 명세는 여기 있는 코드만 사용하며, 여기 없는 코드를 새로 만들지 않습니다.
 > 새 코드가 필요하면 **이 문서를 먼저 고치고** 명세를 갱신합니다.
 >
-> 근거: `docs/user-stories.tsv`(102행) · `docs/erd.md`(테이블 25개) · COMMON-01 ~ COMMON-07
+> 근거: `docs/user-stories.tsv`(103행) · `docs/erd.md`(테이블 25개) · COMMON-01 ~ COMMON-07
 
 ---
 
@@ -80,6 +80,7 @@
 | `INVALID_SHARE_TARGET` | 게시물에 코스와 아카이브를 모두 지정하지 않음 | COMM-04 | |
 | `REGION_REQUIRED` | 코스 없이 아카이브만 공유하면서 지역을 고르지 않음 | COMM-04 | |
 | `INVALID_UNLOCK_CONDITION` | 타임캡슐 해제 조건이 날짜·위치 중 하나로 정해지지 않음 | TC-01 | |
+| `RESTORE_PERIOD_EXPIRED` | 30일 복구 유예가 지난 계정을 복구하려 함 | AUTH-07 | ADR-054 |
 | `INVALID_MEDIA_FORMAT` | 허용하지 않는 파일 형식 | MEDIA-01 | 사진 JPEG·PNG·HEIC·WEBP / 영상 MP4·MOV |
 | `MEDIA_TOO_LARGE` | 파일 용량 초과 | MEDIA-01 | 사진 10MB · 영상 200MB(3분) · 1회 20개 |
 | `MEDIA_UPLOAD_INCOMPLETE` | 스토리지에 파일이 올라오지 않은 상태로 업로드 완료를 통보함 | MEDIA-01 | presigned URL 방식(ADR-023) |
@@ -123,7 +124,7 @@
 | `NOT_COLLABORATOR` | 공동 편집자가 아닌 사용자가 편집 시도 | ARCH-12 | |
 | `COLLABORATION_CLOSED` | 종료된 공동 편집 아카이브를 **편집** 시도 | ARCH-14 | 조회는 통과 — ARCH-14 결과 칸에 명문화됨 |
 | `USER_BLOCKED` | 차단된 회원의 요청 | ADMIN-05, ADMIN-10 | `details.reason`, `details.blockedAt` |
-| `USER_WITHDRAWN` | 탈퇴 처리된 계정의 요청 | AUTH-04 | |
+| `USER_WITHDRAWN` | 탈퇴 처리된 계정의 요청 | AUTH-04 | 유예 중이면 `details.restorableUntil` (ADR-054) |
 | `ADMIN_ONLY` | 일반 사용자가 관리자 API에 접근 | ADMIN-03 | |
 
 > **[결정 E] 공동 편집 종료 후에도 조회는 허용합니다** — 2026-09-07
