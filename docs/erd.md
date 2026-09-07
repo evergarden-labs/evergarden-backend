@@ -157,10 +157,10 @@
 | `type` | VARCHAR(10) |  | N | IMAGE / VIDEO |
 | `storage_key` | TEXT |  | N | S3 오브젝트 키 |
 | `url` | TEXT |  | Y | PENDING이면 아직 없음 |
-| `thumbnail_url` | TEXT |  | Y | 영상은 첫 프레임 |
+| `thumbnail_url` | TEXT |  | Y | 사진 리사이즈본. **영상은 항상 NULL** (ADR-052) |
 | `width` | INT |  | Y |  |
 | `height` | INT |  | Y |  |
-| `duration_ms` | INT |  | Y | 영상만 |
+| `duration_ms` | INT |  | Y | 영상만. 앱이 보낸 값 (ADR-052) |
 | `size_bytes` | BIGINT |  | Y | 사진 10MB / 영상 200MB 상한 (ADR-015) |
 | `taken_at` | TIMESTAMPTZ |  | Y | EXIF 촬영 시각. 아카이브 기간의 재료 (ADR-030) |
 | `lat` | NUMERIC(10,7) |  | Y | EXIF 촬영 좌표 |

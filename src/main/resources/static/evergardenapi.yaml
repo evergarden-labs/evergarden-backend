@@ -1425,6 +1425,10 @@ paths:
         형식과 용량 검증은 여기서 합니다 — URL을 내주기 전에 막아야
         잘못된 파일이 스토리지에 올라가지 않습니다.
 
+        **영상은 해상도와 길이를 함께 보내야 합니다**(ADR-052).
+        서버가 S3의 영상을 열어보지 않으므로 앱이 알려주지 않으면 알 수 없고,
+        해상도를 모르면 아카이브에 배치할 때 영상이 찌그러집니다.
+
         업로드 순서는 이렇습니다.
         1. 이 오퍼레이션으로 `mediaId`와 `uploadUrl`을 받습니다
         2. 앱이 `uploadUrl`에 파일을 `PUT`으로 올립니다 (이 API가 아닙니다)
@@ -1461,7 +1465,7 @@ paths:
           description: |
             `INVALID_MEDIA_FORMAT` — 사진 JPEG·PNG·HEIC·WEBP / 영상 MP4·MOV 이외의 형식
             `MEDIA_TOO_LARGE` — 사진 10MB 또는 영상 200MB 초과
-            `INVALID_REQUEST` — 파일이 없거나 20개를 넘음
+            `INVALID_REQUEST` — 파일이 없거나 20개를 넘음, 또는 영상인데 `width`·`height`·`durationMs`가 없음
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -1474,8 +1478,11 @@ paths:
       x-user-stories: [MEDIA-01]
       description: |
         스토리지에 올리기를 마쳤음을 알립니다.
-        서버가 파일이 실제로 있는지 확인하고, 사진이면 EXIF에서 촬영 시각과 좌표를,
-        영상이면 길이와 썸네일을 뽑아 `status`를 `READY`로 바꿉니다.
+        서버는 파일이 실제로 있는지 확인하고 `status`를 `READY`로 바꿉니다.
+
+        **사진**은 서버가 EXIF에서 촬영 시각·좌표·해상도를 읽습니다.
+        **영상**은 서버가 열어보지 않습니다 — 해상도와 길이는 업로드 URL을 받을 때
+        앱이 함께 보낸 값을 그대로 씁니다(ADR-052).
 
         **`READY`가 된 `mediaId`만 아카이브·타임캡슐에 담을 수 있습니다.**
 
@@ -5118,6 +5125,18 @@ components:
           type: string
           description: 'image/jpeg · image/png · image/heic · image/webp · video/mp4 · video/quicktime'
         sizeBytes: { type: integer, minimum: 1 }
+        width:
+          type: [integer, 'null']
+          description: |
+            **영상이면 필수입니다**(ADR-052). 사진은 서버가 EXIF에서 읽으므로 보내지 않아도 됩니다.
+            영상에서 빠지면 `INVALID_REQUEST`입니다
+        height: { type: [integer, 'null'], description: 영상이면 필수 }
+        durationMs:
+          type: [integer, 'null']
+          description: |
+            영상이면 필수. 재생 시간 표시에 씁니다.
+            **앱이 보내는 값이라 서버가 검증하지 못합니다** — 3분 제한은
+            `sizeBytes`(200MB)로 실질적으로 막습니다
 
     MediaUploadTicket:
       type: object
@@ -5144,7 +5163,10 @@ components:
         thumbnailUrl:
           type: [string, 'null']
           format: uri
-          description: 영상은 첫 프레임에서 뽑습니다
+          description: |
+            사진은 리사이즈한 이미지, **영상은 항상 `null`입니다**(ADR-052).
+            영상 미리보기는 앱이 `url`에서 첫 프레임을 직접 렌더합니다.
+            나중에 서버가 썸네일을 만들게 되면 이 필드를 채우면 되고 계약은 바뀌지 않습니다
         width: { type: [integer, 'null'] }
         height: { type: [integer, 'null'] }
         durationMs:
