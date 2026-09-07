@@ -919,21 +919,23 @@ paths:
     post:
       tags: [플래너]
       operationId: autoArrangeTrip
-      summary: AI 일정 자동 생성
+      summary: AI 일정 자동 배치 (미리보기)
       x-user-stories: [PLAN-09]
       description: |
-        일정에 담긴 장소들을 이동 거리가 짧아지는 순서로 다시 배치합니다.
-        **장소를 추천해 주지는 않습니다** — 순서 정리까지가 이 오퍼레이션의 범위입니다(ADR-020).
+        일정에 담긴 장소들을 이동 거리가 짧아지는 순서로 다시 배치한 **제안을 반환합니다.**
+        **저장하지 않습니다**(ADR-031). 일정은 그대로 있습니다.
 
-        > **[가정] 세 가지가 미정입니다.**
-        > ① **입력** — 이미 담긴 장소만 재배치할지, 요청 본문으로 장소 목록을 새로 받을지.
-        >   이 문서는 담긴 장소를 재배치하되 `additionalPlaceIds`로 추가 입력을 허용하도록 두었습니다.
-        > ② **적용 시점** — 결과를 바로 저장할지, 미리보기를 주고 사용자가 확인하면 저장할지.
-        >   이 문서는 **바로 저장**한다고 가정했습니다. 되돌리기 기능은 스토리에 없습니다.
-        > ③ **구현 방식** — 좌표 기반 자체 계산인지 외부 모델 호출인지.
-        >   자체 계산이면 아래 `503` 응답은 발생하지 않습니다.
-        > 결정 주체: ①② 기획 · ③ 백엔드.
-      x-implementation-status: not-implemented
+        제안이 마음에 들면 앱이 응답의 `items`를 그대로
+        `PUT /trips/{tripId}/places/order`에 보내 적용합니다.
+        요청 본문 모양이 같아서 그대로 전달하면 됩니다.
+        마음에 들지 않으면 아무것도 하지 않으면 됩니다 — 되돌릴 것이 없습니다.
+
+        **장소를 추천해 주지는 않습니다** — 순서 정리까지가 이 오퍼레이션의 범위입니다(ADR-020).
+        얼마나 나아지는지는 `currentDistanceMeters`와 `proposedDistanceMeters`로 비교합니다.
+
+        > **[가정] 구현 방식이 정해지지 않았습니다.**
+        > 좌표 기반 자체 계산인지 외부 모델 호출인지 미정입니다.
+        > 자체 계산이면 아래 `503` 응답은 발생하지 않습니다. 결정 주체: 백엔드.
       parameters:
         - $ref: '#/components/parameters/TripId'
       requestBody:
@@ -943,13 +945,13 @@ paths:
             schema: { $ref: '#/components/schemas/AutoArrangeRequest' }
       responses:
         '200':
-          description: 재배치 완료
+          description: 제안 생성 완료. 일정은 아직 바뀌지 않았습니다
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  data: { $ref: '#/components/schemas/TripDetail' }
+                  data: { $ref: '#/components/schemas/AutoArrangeResult' }
                   meta: { type: 'null' }
         '400':
           description: |
@@ -4846,14 +4848,39 @@ components:
 
     AutoArrangeRequest:
       type: object
-      description: |
-        본문 없이 호출하면 일정에 이미 담긴 장소만 재배치합니다.
-        **[가정]** 이 입력 형태는 확정되지 않았습니다 — `POST /trips/{tripId}/auto-arrange` 설명 참고.
+      description: 본문 없이 호출하면 일정에 이미 담긴 장소만 재배치합니다
       properties:
         additionalPlaceIds:
           type: array
-          description: 재배치와 함께 새로 담을 장소들
+          description: |
+            아직 일정에 없지만 이번 배치에 함께 넣어보고 싶은 장소들.
+            **제안에만 반영되고 저장되지 않습니다**(ADR-031)
           items: { type: integer, format: int64 }
+
+    AutoArrangeResult:
+      type: object
+      description: |
+        제안된 배치입니다. **저장되지 않았습니다.**
+        `items`를 그대로 `PUT /trips/{tripId}/places/order`에 보내면 적용됩니다
+      required: [items, currentDistanceMeters, proposedDistanceMeters]
+      properties:
+        items:
+          type: array
+          description: '`TripPlaceOrderRequest.items`와 같은 모양입니다'
+          items:
+            type: object
+            required: [tripPlaceId, dayNumber, sortOrder]
+            properties:
+              tripPlaceId: { type: integer, format: int64 }
+              dayNumber: { type: integer, minimum: 1 }
+              sortOrder: { type: integer, minimum: 1 }
+              place: { $ref: '#/components/schemas/PlaceSummary' }
+        currentDistanceMeters:
+          type: integer
+          description: 지금 순서대로 다녔을 때의 이동 거리 합
+        proposedDistanceMeters:
+          type: integer
+          description: 제안한 순서로 다녔을 때의 이동 거리 합
 
     TripRoute:
       type: object
