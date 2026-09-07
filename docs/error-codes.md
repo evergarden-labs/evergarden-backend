@@ -180,14 +180,10 @@
 | `CAPSULE_NOT_UNLOCKABLE` | 해제 조건이 충족되지 않은 타임캡슐 열기 | TC-05 | `details.unlockType` |
 | `CAPSULE_ALREADY_OPENED` | 이미 연 타임캡슐을 다시 열기 | TC-05 | |
 | `REPORT_ALREADY_REVIEWED` | 이미 유효·반려 판정된 신고를 다시 판정 | ADMIN-09 | |
-| `REGION_VISIT_COOLDOWN` | — | GARDEN-02 | ⚠️ **미사용 후보.** 아래 주석 참고 |
 
-> ⚠️ **`REGION_VISIT_COOLDOWN`은 현재 어느 오퍼레이션에서도 발생하지 않습니다.**
-> GARDEN-02의 문구가 "같은 지역은 **7일에 한 번만 성장에 반영된다**"이므로,
-> 쿨다운은 **인증 자체를 막는 것이 아니라 보상만 건너뛰는 것**으로 해석했습니다.
-> 그래서 `POST /region-visits`는 쿨다운 중에도 `200`으로 성공하고
-> 응답의 `rewardStatus: COOLDOWN`으로 알립니다.
-> 인증 자체를 거부하기로 정하면 이 코드를 `409`로 되살립니다. 결정 주체: 기획.
+> **쿨다운에는 오류 코드를 두지 않습니다.**
+> 7일 안에 같은 지역을 다시 인증해도 `200`으로 성공하고
+> 응답의 `rewardStatus: COOLDOWN`으로 알립니다(ADR-038).
 
 > **[결정 F] 같은 지역 재인증 쿨다운은 `7일`** — 2026-09-07, 기획 확정
 > ERD의 `user_garden_objects.last_grown_at` 기준으로 판정합니다.
@@ -239,9 +235,7 @@
 | `MEDIA_TOO_LARGE` · `INVALID_MEDIA_FORMAT` | ADR-014 (`413`·`415` 미사용) · ADR-015 (상한값) |
 | `LOCATION_ACCURACY_TOO_LOW` | ADR-016 (임계값 100m) |
 | `COLLABORATION_CLOSED` | ADR-017 (종료 후 조회 허용) |
-| `REGION_VISIT_COOLDOWN` | ADR-018 (쿨다운 7일) |
 | `409` 계열 전반 | ADR-006 (중복은 DB 제약으로 차단) |
 | `NICKNAME_DUPLICATED` (미채택) | ADR 문서 D절 — 닉네임 중복 허용 여부 미정 |
 
-**총 54개 코드** — 400: 11 · 401: 6 · 403: 7 · 404: 15 · 409: 14 · 500·503: 2
-(이 중 `REGION_VISIT_COOLDOWN` 1개는 현재 미사용 상태입니다.)
+**총 53개 코드** — 400: 11 · 401: 6 · 403: 7 · 404: 15 · 409: 13 · 500·503: 2

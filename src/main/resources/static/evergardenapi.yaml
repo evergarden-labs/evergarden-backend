@@ -475,10 +475,9 @@ paths:
         > **[가정] 건너뛴 사용자의 닉네임을 어떻게 만들지 정해지지 않았습니다.**
         > 커뮤니티에 글을 쓰려면 표시할 이름이 있어야 하는데
         > ONB-02에는 이 내용이 없습니다.
-        > 이 문서는 서버가 기본 닉네임을 생성한다고 가정했으며,
-        > **형식(예: `여행자1234`)은 정하지 않았습니다.**
-        > 닉네임은 중복될 수 없으므로(ADR-025) 생성 규칙에 유일성 보장이 들어가야 합니다.
-        > 결정 주체: 기획.
+        서버가 **`여행자` + 네 자리 숫자** 형태로 기본 닉네임을 만듭니다(ADR-050).
+        닉네임은 중복될 수 없으므로(ADR-025) 이미 쓰이는 값이면 다른 숫자로 다시 만듭니다.
+        사용자는 나중에 마이페이지에서 바꿀 수 있습니다(MY-02).
       responses:
         '200':
           description: 건너뛰기 완료
@@ -552,10 +551,9 @@ paths:
 
         번호 방식 페이지네이션입니다(ADR-011).
 
-        > **[가정] 정렬 기준이 정해지지 않았습니다.**
-        > 이 문서는 **시작일 내림차순**(가장 최근 여행이 위)으로 두었습니다.
-        > 예정된 여행을 먼저 보여줘야 한다면 정렬을 바꿔야 합니다.
-        > 결정 주체: 기획.
+        **예정된 여행이 먼저 오고, 그 아래에 지난 여행이 최신순으로 붙습니다**(ADR-040).
+        플래너는 준비 중인 여행을 고치러 들어오는 화면이라 그쪽이 위에 있어야 합니다.
+        같은 묶음 안에서는 `UPCOMING`·`ONGOING`이 시작일 오름차순, `PAST`가 시작일 내림차순입니다.
       parameters:
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/Size'
@@ -615,10 +613,9 @@ paths:
         일정의 제목, 기간, 여행지를 변경합니다. 보내지 않은 필드는 그대로 둡니다.
         일정에 담긴 장소를 고치는 것은 `.../places` 오퍼레이션들입니다.
 
-        > **[가정] 기간을 줄였을 때 범위 밖으로 밀려나는 장소의 처리가 정해지지 않았습니다.**
-        > 3일 일정을 2일로 줄이면 3일차 장소가 갈 곳이 없습니다.
-        > 함께 삭제할지, 거부할지, 마지막 날로 옮길지 미정입니다.
-        > 이 문서는 **`INVALID_REQUEST`로 거부**한다고 가정했습니다. 결정 주체: 기획.
+        **기간을 줄여서 갈 곳 없는 장소가 생기면 거부합니다**(ADR-041).
+        `details`에 밀려나는 장소를 담아, 앱이 "3일차에 장소 2개가 있습니다"로 안내하고
+        사용자가 먼저 옮기거나 지우게 합니다. 서버가 말없이 지우거나 옮기지 않습니다.
       parameters:
         - $ref: '#/components/parameters/TripId'
       requestBody:
@@ -638,7 +635,8 @@ paths:
                   meta: { type: 'null' }
         '400':
           description: |
-            `INVALID_REQUEST` — 검증 실패, 또는 남는 장소가 있는 기간 축소
+            `INVALID_REQUEST` — 검증 실패, 또는 기간을 줄여 갈 곳 없는 장소가 생김.
+            후자는 `details`에 밀려나는 장소들이 담깁니다(ADR-041)
             `INVALID_DATE_RANGE` — 시작일이 종료일보다 늦음
           content:
             application/json:
@@ -869,18 +867,17 @@ paths:
 
         여기서 고른 장소를 일정에 넣는 것은 `POST /trips/{tripId}/places`입니다.
 
-        > **[가정] 추천 기준이 정해지지 않았습니다.**
-        > 어느 장소를 중심으로 할지(마지막 장소? 일자별?), 반경을 얼마로 할지,
-        > 이미 담긴 장소를 제외할지가 근거 문서에 없습니다.
-        > 이 문서는 `dayNumber`로 기준 일자만 받도록 두었고 반경은 정하지 않았습니다.
-        > 결정 주체: 기획.
-      x-implementation-status: not-implemented
+        **기준 일자에 담긴 장소들을 중심으로 반경 5km 안을 찾고, 이미 담은 장소는 뺍니다**(ADR-042).
+        `dayNumber`를 생략하면 일정 전체의 장소를 기준으로 합니다.
+        그 날 동선 안에서 추천이 나오므로 넣어도 이동이 크게 늘지 않습니다.
       parameters:
         - $ref: '#/components/parameters/TripId'
         - name: dayNumber
           in: query
           required: false
-          description: 기준으로 삼을 일자. 생략하면 일정 전체를 기준으로 합니다
+          description: |
+            기준으로 삼을 일자. 그 날 담긴 장소들의 주변을 찾습니다.
+            생략하면 일정 전체의 장소를 기준으로 합니다(ADR-042)
           schema: { type: integer, minimum: 1 }
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/Size'
@@ -984,11 +981,9 @@ paths:
         일정 상세(PLAN-03)에도 좌표가 들어 있지만, 지도만 그릴 때
         장소 설명과 메모까지 받는 것은 낭비라 조회를 나눴습니다.
 
-        > **[가정] 이동 거리 계산 여부가 정해지지 않았습니다.**
-        > "이동 반경이 한눈에 보인다"(PLAN-10)를 위해 경계 상자는 넣었지만,
-        > 총 이동 거리·소요 시간을 서버가 계산해야 하는지는 미정입니다.
-        > 실제 도로 거리를 내려면 외부 경로 API가 추가로 필요합니다.
-        > 이 문서는 **직선 거리 합만** `totalDistanceMeters`로 두었습니다. 결정 주체: 기획.
+        **이동 거리는 직선 거리 합입니다**(ADR-043). 실제 도로 거리가 아닙니다.
+        외부 경로 API를 붙이지 않으므로 비용이 들지 않고 즉시 계산됩니다.
+        자동 배치(ADR-032)도 같은 기준을 쓰므로 두 화면의 숫자가 일치합니다.
       parameters:
         - $ref: '#/components/parameters/TripId'
       responses:
@@ -1026,10 +1021,10 @@ paths:
 
         원본이 나중에 수정되거나 삭제돼도 복사본은 영향을 받지 않습니다.
 
-        > **[가정] 복사본의 여행 기간을 어떻게 정할지 미정입니다.**
-        > 원본 날짜를 그대로 쓰면 이미 지난 날짜가 됩니다.
-        > 이 문서는 `startDate`를 선택 입력으로 받아 그날부터 일차를 다시 매기고,
-        > 생략하면 원본 기간을 그대로 복사하도록 두었습니다. 결정 주체: 기획.
+        **`startDate`를 받아 그날부터 일차를 다시 매깁니다**(ADR-048).
+        원본이 3박 4일이면 내 시작일부터 3박 4일로 잡힙니다.
+        생략하면 기간 없는 초안으로 들어오고, 나중에 `PATCH /trips/{tripId}`로 채웁니다 —
+        원본 날짜를 그대로 복사하면 가져오자마자 지난 여행으로 분류됩니다.
       parameters:
         - name: postId
           in: path
@@ -1045,7 +1040,9 @@ paths:
                 startDate:
                   type: [string, 'null']
                   format: date
-                  description: 복사본의 여행 시작일. 생략하면 원본 기간을 그대로 씁니다
+                  description: |
+                    복사본의 여행 시작일. 원본의 여행 일수만큼 여기서부터 다시 매깁니다.
+                    생략하면 기간 없는 초안으로 들어옵니다(ADR-048)
                 title:
                   type: [string, 'null']
                   maxLength: 60
@@ -1145,11 +1142,10 @@ paths:
         일정에 넣기 전에 확인할 관광지 정보를 반환합니다.
         이름, 위치, 이미지, 주소, 연락처, 소개글이 포함됩니다.
 
-        > **[가정] 운영 시간과 휴무일은 넣지 않았습니다.**
-        > 기획서에는 "이용 시간, 휴무일"을 활용한다고 되어 있지만
-        > 콘텐츠랩에서 이 정보는 콘텐츠 분류마다 필드 이름과 형식이 다릅니다.
-        > 어느 분류까지 지원할지 정해지면 `PlaceDetail`에 필드를 추가합니다.
-        > 결정 주체: 기획 + 백엔드.
+        운영 시간과 휴무일은 **콘텐츠랩이 준 문자열을 그대로** 내려보냅니다(ADR-049).
+        서버가 요일별 구조로 파싱하지 않습니다 — 분류마다 형식이 제각각이라
+        파싱하면 틀린 정보를 보여줄 위험이 있습니다.
+        정보가 없는 장소는 `null`이고, 앱은 그럴 때 항목을 감춥니다.
       parameters:
         - $ref: '#/components/parameters/PlaceId'
       responses:
@@ -1198,11 +1194,9 @@ paths:
         좌표에서 지역을 판정하는 방식은 콘텐츠랩 위치기반 관광정보의 `areacode`를 채택합니다(ADR-004).
         요청에 `regionCode`를 함께 보내면 서버 판정 결과와 대조해 다르면 거절합니다.
 
-        > **[가정] 쿨다운이 인증을 막지는 않습니다.**
-        > GARDEN-02가 "7일에 한 번만 **성장에 반영**된다"이므로,
-        > 7일 안에 같은 지역을 다시 인증해도 기록은 남고 `rewardStatus`만 `COOLDOWN`이 됩니다.
-        > 인증 자체를 거부하기로 하면 `REGION_VISIT_COOLDOWN`을 `409`로 되살려야 합니다.
-        > 결정 주체: 기획.
+        **쿨다운은 인증을 막지 않습니다**(ADR-038).
+        7일 안에 같은 지역을 다시 인증해도 방문 기록은 남고 `rewardStatus`만 `COOLDOWN`이 됩니다.
+        부산에 세 번 갔으면 세 번 다 기록되고, 식물만 한 번 자랍니다.
       requestBody:
         required: true
         content:
@@ -1366,11 +1360,8 @@ paths:
         아직 해금하지 않은 것은 포함하지 않습니다 —
         어느 지역에서 무엇을 얻을 수 있는지는 `GET /regions/{regionCode}`에서 봅니다.
 
-        > **[가정] 정원을 사용자당 하나로 두었습니다.**
-        > 기획서에는 "아카이빙된 지역의 지도가 개인의 추억 정원으로 변모한다"고 되어 있어
-        > 지역별 정원으로 읽힐 여지가 있으나, GARDEN-01은 "정원 메뉴에 진입한다"로
-        > 단수입니다. 지역별로 나누려면 이 경로에 지역 구분이 들어가야 합니다.
-        > 결정 주체: 기획.
+        **정원은 사용자당 하나입니다**(ADR-037). 어느 지역에서 얻었든 한 정원에 모입니다.
+        지역별로 나누지 않으므로 이 경로에 지역 구분이 없습니다.
       responses:
         '200':
           description: 조회 성공
@@ -2730,9 +2721,8 @@ paths:
 
         **인기는 좋아요 순입니다**(ADR-019). `posts.like_count` 컬럼으로 정렬합니다.
 
-        > **[가정] 인기 정렬에 기간 제한이 없습니다.**
-        > 지금은 전체 기간 좋아요 수로 줄을 세워, 오래된 인기 게시물이 계속 위에 남습니다.
-        > "최근 7일 내" 같은 조건을 넣으려면 정렬 규칙을 다시 정해야 합니다. 결정 주체: 기획.
+        **인기는 최근 30일 안에 올라온 게시물만 좋아요 순으로 줄 세웁니다**(ADR-044).
+        30일이 지난 게시물은 좋아요가 많아도 인기 피드에 나오지 않습니다 — 최신 피드에서는 계속 보입니다.
       parameters:
         - name: sort
           in: query
@@ -2886,11 +2876,9 @@ paths:
       description: |
         게시물 본문을 고칩니다.
 
-        > **[가정] 공유 대상과 지역은 바꿀 수 없게 두었습니다.**
-        > COMM-05는 "내용을 변경한다"로만 되어 있습니다.
-        > 공유 대상을 바꾸면 사실상 다른 게시물이 되고,
-        > 지역 스냅샷(ADR-003)도 다시 계산해야 해서 이미 달린 댓글의 맥락이 깨집니다.
-        > 바꿀 수 있어야 한다면 지역 재계산 규칙을 함께 정해야 합니다. 결정 주체: 기획.
+        **공유 대상과 지역은 바꿀 수 없습니다**(ADR-045). 본문만 고칩니다.
+        공유 대상을 바꾸면 사실상 다른 게시물이 되어 이미 달린 댓글의 맥락이 깨지고,
+        지역 스냅샷(ADR-003)도 흔들립니다. 잘못 올렸으면 지우고 다시 올립니다.
       parameters:
         - $ref: '#/components/parameters/PostId'
       requestBody:
@@ -3380,6 +3368,7 @@ paths:
       x-user-stories: [COMM-10]
       description: |
         부적절한 게시물을 운영자에게 알립니다.
+        사유를 정해진 항목에서 고르고, 필요하면 설명을 덧붙입니다(ADR-046).
         접수만 되고 즉시 조치되지 않습니다 — 관리자가 검토해 유효로 판정해야
         작성자의 누적 신고 횟수에 반영됩니다(ADMIN-09).
 
@@ -3403,7 +3392,7 @@ paths:
                   meta: { type: 'null' }
         '400':
           description: |
-            `INVALID_REQUEST` — 사유 누락
+            `INVALID_REQUEST` — 사유 누락, 또는 `ETC`인데 설명이 없음
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -3811,10 +3800,9 @@ paths:
         **경고 알림(`WARNING`)은 끌 수 없습니다.** 운영 통지라 수신 거부 대상이 아니며,
         끄면 경고를 못 보고 차단당합니다. 끄려고 시도하면 `INVALID_REQUEST`입니다.
 
-        > **[가정] 설정 항목의 범위가 정해지지 않았습니다.**
-        > NOTI-03은 "항목을 변경한다"로만 되어 있습니다.
-        > 이 문서는 알림 종류와 설정 항목을 1:1로 두었습니다.
-        > "야간 수신 안 함" 같은 축이 필요하면 구조가 달라집니다. 결정 주체: 기획.
+        **설정은 알림 종류와 1:1입니다**(ADR-047). 시간대 같은 다른 축은 두지 않습니다.
+        지금은 앱 내 알림만 있어 "야간 수신 안 함" 같은 설정이 실질적인 효과가 없습니다.
+        나중에 푸시 알림을 붙일 때 다시 봅니다.
       requestBody:
         required: true
         content:
@@ -3868,9 +3856,8 @@ paths:
 
         아이디와 비밀번호 중 무엇이 틀렸는지 구분해서 알리지 않습니다.
 
-        > **[가정] 관리자 인증 체계가 확정되지 않았습니다.**
-        > 이 문서는 일반 사용자와 같은 Bearer 스킴에 역할 클레임으로 구분한다고 가정했습니다.
-        > 별도 세션으로 가면 이 응답과 `securitySchemes`가 바뀝니다. 결정 주체: 백엔드.
+        인증은 **일반 회원과 같은 Bearer JWT를 쓰고 토큰의 역할 클레임으로 구분합니다**(ADR-036).
+        관리자 전용 세션을 따로 두지 않으므로 인증 처리가 한 벌입니다.
       requestBody:
         required: true
         content:
@@ -4449,7 +4436,7 @@ components:
       bearerFormat: JWT
       description: |
         서버가 발급한 액세스 토큰. 만료 30분.
-        관리자도 같은 스킴을 쓰되 역할 클레임으로 구분합니다([가정], 결정 주체: 백엔드).
+        관리자도 같은 스킴을 쓰되 토큰의 역할 클레임으로 구분합니다(ADR-036).
 
   parameters:
 
@@ -4921,8 +4908,8 @@ components:
               totalDistanceMeters:
                 type: [integer, 'null']
                 description: |
-                  그 날 이동 거리의 합. **[가정]** 직선 거리 기준입니다.
-                  실제 도로 거리가 필요하면 외부 경로 API를 붙여야 합니다
+                  그 날 이동 거리의 합. **직선 거리 기준입니다**(ADR-043).
+                  실제 도로를 따라간 거리가 아니므로 실제보다 짧게 나옵니다
         boundingBox:
           type: object
           description: 지도를 이 범위에 맞추면 동선 전체가 들어옵니다
@@ -4972,6 +4959,14 @@ components:
             overview:
               type: [string, 'null']
               description: 콘텐츠랩 소개글
+            useTime:
+              type: [string, 'null']
+              description: |
+                이용 시간. 콘텐츠랩 원문 그대로입니다(ADR-049).
+                "09:00~18:00", "상시개방"처럼 형식이 제각각이라 그대로 보여줍니다
+            restDate:
+              type: [string, 'null']
+              description: 휴무일. 콘텐츠랩 원문 그대로 ("연중무휴", "매주 월요일" 등)
             imageUrls:
               type: array
               description: 관광 사진 정보에서 받은 공공저작물 이미지
@@ -5604,17 +5599,24 @@ components:
 
     # --- 신고 ---
 
+    ReportReason:
+      type: string
+      enum: [OBSCENE, ABUSE, SPAM, FALSE_INFO, ETC]
+      description: |
+        `OBSCENE` 음란물 · `ABUSE` 욕설·혐오 · `SPAM` 광고·도배 ·
+        `FALSE_INFO` 허위 정보 · `ETC` 기타(ADR-046)
+
     ReportRequest:
       type: object
       required: [reason]
       properties:
-        reason:
-          type: string
-          minLength: 1
+        reason: { $ref: '#/components/schemas/ReportReason' }
+        detail:
+          type: [string, 'null']
           maxLength: 200
           description: |
-            **[가정]** 신고 사유를 자유 입력으로 두었습니다.
-            정해진 항목에서 고르게 하려면 사유 코드 목록을 먼저 정해야 합니다. 결정 주체: 기획
+            덧붙일 설명. `reason`이 `ETC`이면 필수입니다 —
+            "기타"만으로는 관리자가 판정할 수 없습니다
 
     ReportResult:
       type: object
@@ -5785,7 +5787,8 @@ components:
         targetType: { type: string, enum: [POST, COMMENT] }
         targetId: { type: integer, format: int64 }
         targetAuthor: { $ref: '#/components/schemas/Author' }
-        reason: { type: string }
+        reason: { $ref: '#/components/schemas/ReportReason' }
+        detail: { type: [string, 'null'], description: 신고자가 덧붙인 설명 }
         status: { $ref: '#/components/schemas/ReportStatus' }
         reporter: { $ref: '#/components/schemas/Author' }
         createdAt: { type: string, format: date-time }
