@@ -18,12 +18,42 @@ repositories {
     mavenCentral()
 }
 
+ext {
+    jjwtVersion = '0.12.6'
+    springdocVersion = '3.1.0'
+    awsSdkVersion = '2.31.0'
+    metadataExtractorVersion = '2.19.0'
+}
+
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
     implementation 'org.springframework.boot:spring-boot-starter-websocket'
+
+    // Redis — 리프레시 토큰 저장, 콘텐츠랩 응답 캐시
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+
+    // 스키마 마이그레이션 — ddl-auto=validate이라 테이블을 만들 수단이 필요하다
+    implementation 'org.flywaydb:flyway-core'
+    runtimeOnly 'org.flywaydb:flyway-database-postgresql'
+
+    // API 문서 — evergardenapi.yaml을 Swagger UI로 띄운다. 3.x가 Spring Boot 4.x 대응
+    implementation "org.springdoc:springdoc-openapi-starter-webmvc-ui:${springdocVersion}"
+
+    // JWT — 액세스 30분, 리프레시 7일 (ADR-010)
+    implementation "io.jsonwebtoken:jjwt-api:${jjwtVersion}"
+    runtimeOnly "io.jsonwebtoken:jjwt-impl:${jjwtVersion}"
+    runtimeOnly "io.jsonwebtoken:jjwt-jackson:${jjwtVersion}"
+
+    // S3 — presigned URL 발급 (ADR-023)
+    implementation platform("software.amazon.awssdk:bom:${awsSdkVersion}")
+    implementation 'software.amazon.awssdk:s3'
+
+    // EXIF — 사진 촬영 시각·좌표 추출 (ADR-030)
+    implementation "com.drewnoakes:metadata-extractor:${metadataExtractorVersion}"
+
     compileOnly 'org.projectlombok:lombok'
     developmentOnly 'org.springframework.boot:spring-boot-devtools'
     runtimeOnly 'org.postgresql:postgresql'
