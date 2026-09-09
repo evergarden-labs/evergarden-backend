@@ -35,8 +35,9 @@ dependencies {
     // Redis — 리프레시 토큰 저장, 콘텐츠랩 응답 캐시
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 
-    // 스키마 마이그레이션 — ddl-auto=validate이라 테이블을 만들 수단이 필요하다
-    implementation 'org.flywaydb:flyway-core'
+    // 스키마 마이그레이션 — ddl-auto=validate이라 테이블을 만들 수단이 필요하다.
+    // flyway-core만 넣으면 라이브러리만 있고 실행되지 않는다. Boot 4는 자동설정이 스타터로 분리돼 있다
+    implementation 'org.springframework.boot:spring-boot-starter-flyway'
     runtimeOnly 'org.flywaydb:flyway-database-postgresql'
 
     // API 문서 — evergardenapi.yaml을 Swagger UI로 띄운다. 3.x가 Spring Boot 4.x 대응
@@ -58,6 +59,11 @@ dependencies {
     developmentOnly 'org.springframework.boot:spring-boot-devtools'
     runtimeOnly 'org.postgresql:postgresql'
     annotationProcessor 'org.projectlombok:lombok'
+    // 통합 테스트 — 실제 PostgreSQL·Redis 컨테이너를 띄운다
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+    testImplementation 'org.testcontainers:testcontainers-postgresql'
+
     testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-security-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
