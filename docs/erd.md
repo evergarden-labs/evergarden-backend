@@ -53,7 +53,7 @@
 | 컬럼 | 타입 | 키 | NULL | 비고 |
 |---|---|---|---|---|
 | `code` | VARCHAR(10) | PK | N | 콘텐츠랩 areaCode / sigunguCode 원본 (ADR-004) |
-| `parent_code` | VARCHAR(10) | FK | Y | → regions. 시/도는 NULL |
+| `parent_code` | VARCHAR(10) | FK | Y | → regions. 시/도는 NULL, 시군구는 필수 (`regions_hierarchy_chk`) |
 | `level` | VARCHAR(10) |  | N | SIDO / SIGUNGU |
 | `name` | VARCHAR(50) |  | N |  |
 | `center_lat` | NUMERIC(10,7) |  | N | 지도 이동·근사 판정용 |

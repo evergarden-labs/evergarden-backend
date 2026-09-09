@@ -66,7 +66,12 @@ CREATE TABLE regions (
     center_lng  NUMERIC(10,7) NOT NULL,
     synced_at   TIMESTAMPTZ   NOT NULL DEFAULT now(),
     CONSTRAINT regions_parent_fk FOREIGN KEY (parent_code) REFERENCES regions(code),
-    CONSTRAINT regions_level_chk CHECK (level IN ('SIDO','SIGUNGU'))
+    CONSTRAINT regions_level_chk CHECK (level IN ('SIDO','SIGUNGU')),
+    -- level과 parent_code가 어긋나지 않게 한다.
+    -- 동기화 배치가 시군구를 넣으면서 상위 시/도를 빠뜨리면 여기서 걸린다
+    CONSTRAINT regions_hierarchy_chk CHECK (
+        (level = 'SIDO'    AND parent_code IS NULL)
+     OR (level = 'SIGUNGU' AND parent_code IS NOT NULL))
 );
 COMMENT ON TABLE regions IS '콘텐츠랩 areaCode/sigunguCode를 그대로 기본키로 쓴다 (ADR-004)';
 CREATE INDEX regions_parent_idx ON regions (parent_code);
