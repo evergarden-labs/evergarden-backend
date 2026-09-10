@@ -2,8 +2,13 @@
 # 공통 설정은 application.yml에 있다. 여기에는 dev와 다른 것만 둔다.
 
 # Swagger / OpenAPI
+# 운영에서는 문서를 아예 내린다. 시큐리티가 문서 경로를 열어두므로(SecurityConfig.DOCS)
+# 켜두면 인증 없이 전체 API 구조가 노출된다.
 springdoc:
+  api-docs:
+    enabled: false
   swagger-ui:
+    enabled: false
     disable-swagger-default-url: true    # 운영에선 예제 URL을 막는다
   show-actuator: false                   # 운영에선 actuator를 문서에 노출하지 않는다
 

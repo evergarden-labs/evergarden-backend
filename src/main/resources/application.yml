@@ -2,12 +2,6 @@
 # 프로필별로 다른 것만 application-dev.yml / application-prod.yml에 둔다.
 # 여기를 고치면 두 프로필에 모두 적용된다.
 
-# Server
-server:
-  servlet:
-    session:
-      timeout: 30m
-
 # Spring
 spring:
   # Application
@@ -17,6 +11,14 @@ spring:
   # Profile
   profiles:
     active: dev
+
+  # 인메모리 기본 계정을 만들지 않는다.
+  # 커스텀 SecurityFilterChain을 정의해도 이 자동설정은 물러나지 않아,
+  # 기동할 때마다 "Using generated security password: ..."를 찍고
+  # 쓰이지도 않는 user 계정을 하나 만들어 둔다. 인증은 JWT로만 한다(ADR-010)
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration
 
   # JPA
   jpa:
