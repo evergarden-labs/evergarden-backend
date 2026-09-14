@@ -26,6 +26,10 @@ import lombok.NoArgsConstructor;
  * <p>파일 자체는 S3에 있고 여기에는 참조와 메타데이터만 둔다(ADR-023).
  * 사진의 촬영 시각·좌표·해상도는 서버가 EXIF에서 읽지만,
  * 영상은 서버가 열어보지 않으므로 앱이 보낸 값을 그대로 쓴다(ADR-052).
+ *
+ * <p><b>URL을 저장하지 않고 S3 키만 저장한다</b>(ADR-055). 조회는 presigned GET이라
+ * 발급 순간부터 만료 카운트다운이 시작돼, DB에 박아둬도 곧 못 쓰게 된다.
+ * 응답의 {@code url}·{@code thumbnailUrl}은 서비스가 이 키로 조회 시점에 매번 새로 만든다.
  */
 @Entity
 @Getter
@@ -49,17 +53,13 @@ public class Media extends BaseTimeEntity {
     @Column(nullable = false, length = 10)
     private MediaType type;
 
-    /** S3 오브젝트 키 */
+    /** 원본의 S3 키. 조회 시점에 이 키로 presigned GET을 발급한다(ADR-055) */
     @Column(name = "storage_key", nullable = false, columnDefinition = "text")
     private String storageKey;
 
-    /** 업로드가 끝나기 전에는 비어 있다 */
-    @Column(columnDefinition = "text")
-    private String url;
-
-    /** 사진 리사이즈본. 영상은 항상 {@code null}이다(ADR-052) */
-    @Column(name = "thumbnail_url", columnDefinition = "text")
-    private String thumbnailUrl;
+    /** 사진 리사이즈본의 S3 키. 영상은 항상 {@code null}이다(ADR-052) */
+    @Column(name = "thumbnail_key", columnDefinition = "text")
+    private String thumbnailKey;
 
     private Integer width;
 
@@ -98,13 +98,13 @@ public class Media extends BaseTimeEntity {
     /**
      * 업로드 완료를 반영한다.
      *
-     * <p>사진이면 서버가 EXIF에서 읽은 값을 넘기고, 영상이면 촬영 정보 없이
-     * URL만 채운다. 영상의 해상도·길이는 생성 시점에 앱이 이미 보냈다(ADR-052).
+     * <p>사진이면 서버가 EXIF에서 읽은 값과 새로 만든 썸네일 키를 넘기고, 영상이면
+     * {@code thumbnailKey}가 항상 {@code null}이다 — 해상도·길이는 생성 시점에
+     * 앱이 이미 보내서 다시 채울 필요가 없다(ADR-052).
      */
-    public void complete(String url, String thumbnailUrl, Integer width, Integer height,
+    public void complete(String thumbnailKey, Integer width, Integer height,
                          LocalDateTime takenAt, BigDecimal lat, BigDecimal lng) {
-        this.url = url;
-        this.thumbnailUrl = thumbnailUrl;
+        this.thumbnailKey = thumbnailKey;
         if (width != null) {
             this.width = width;
         }
@@ -120,5 +120,9 @@ public class Media extends BaseTimeEntity {
     /** 아카이브·타임캡슐에 담을 수 있는 상태인지 */
     public boolean isReady() {
         return status == MediaStatus.READY;
+    }
+
+    public boolean isUploadedBy(Long userId) {
+        return uploader.getId().equals(userId);
     }
 }

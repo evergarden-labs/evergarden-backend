@@ -23,6 +23,7 @@ ext {
     springdocVersion = '3.1.0'
     awsSdkVersion = '2.31.0'
     metadataExtractorVersion = '2.19.0'
+    thumbnailatorVersion = '0.4.20'
 }
 
 dependencies {
@@ -48,12 +49,17 @@ dependencies {
     runtimeOnly "io.jsonwebtoken:jjwt-impl:${jjwtVersion}"
     runtimeOnly "io.jsonwebtoken:jjwt-jackson:${jjwtVersion}"
 
-    // S3 — presigned URL 발급 (ADR-023)
+    // S3 — presigned URL 발급 (ADR-023, ADR-055)
+    // s3 모듈에 프리사이너(software.amazon.awssdk.services.s3.presigner.*)가 포함돼 있어
+    // s3-presigner를 따로 추가하지 않는다 — 이 SDK 버전부터 별도 아티팩트가 없다
     implementation platform("software.amazon.awssdk:bom:${awsSdkVersion}")
     implementation 'software.amazon.awssdk:s3'
 
     // EXIF — 사진 촬영 시각·좌표 추출 (ADR-030)
     implementation "com.drewnoakes:metadata-extractor:${metadataExtractorVersion}"
+
+    // 썸네일 — 사진 리사이즈본 생성 (ADR-055)
+    implementation "net.coobird:thumbnailator:${thumbnailatorVersion}"
 
     compileOnly 'org.projectlombok:lombok'
     developmentOnly 'org.springframework.boot:spring-boot-devtools'
