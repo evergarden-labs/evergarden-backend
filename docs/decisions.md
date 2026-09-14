@@ -852,6 +852,25 @@ Redis를 고른 이유는 TTL이 만료 기간과 정확히 맞아떨어져 별�
 **영향** — AUTH-01·AUTH-03·AUTH-05 / `POST /auth/social/{provider}`·`POST /auth/token/refresh`·
 `POST /auth/logout` / `docs/erd.md`의 "저장소에 두지 않는 것" 항목을 구체화
 
+### ADR-055 · 미디어 조회도 presigned GET으로 하고, 원본·썸네일은 URL이 아니라 키로 저장한다
+
+업로드(ADR-023)와 대칭으로, 조회도 버킷을 비공개로 둔 채 presigned GET으로 합니다.
+그래서 `media.url`·`media.thumbnail_url` 컬럼을 없애고 `storage_key`(원본)·`thumbnail_key`(썸네일)만
+저장합니다. presigned URL은 발급 순간부터 만료 카운트다운이 시작돼 DB에 박아두면 금방 못 씁니다 —
+API 응답의 `url`·`thumbnailUrl`은 조회 시점에 그 키로 서버가 매번 새로 발급합니다.
+
+업로드 URL은 10분(ADR-023), **조회 URL은 1시간**입니다. 화면 하나 보는 동안 만료될 일이 없으면서도
+링크가 영구히 새지는 않는 균형점으로 잡았습니다.
+
+썸네일은 서버가 원본을 내려받아 Thumbnailator로 리사이즈해 별도 오브젝트로 올립니다.
+영상은 만들지 않습니다(ADR-052).
+
+**이유** — 퍼블릭 버킷은 URL만 알면 누구나 접근할 수 있습니다. 지금 트래픽 규모에서 CloudFront를
+얹을 이유는 없지만, presigned 방식으로 시작해 두면 나중에 CloudFront를 앞에 얹어도
+버킷·키 구조를 다시 만들 필요가 없습니다.
+
+**영향** — MEDIA-01 / `media` 테이블 `url`·`thumbnail_url` 삭제, `thumbnail_key` 추가 (**ERD 반영 완료**)
+
 ---
 
 ## D. 아직 정하지 못한 것

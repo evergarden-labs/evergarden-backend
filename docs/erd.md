@@ -155,9 +155,8 @@
 | `user_id` | BIGINT | FK | N | 업로더 |
 | `status` | VARCHAR(10) |  | N | PENDING / READY. READY만 다른 도메인에서 사용 가능 (ADR-023) |
 | `type` | VARCHAR(10) |  | N | IMAGE / VIDEO |
-| `storage_key` | TEXT |  | N | S3 오브젝트 키 |
-| `url` | TEXT |  | Y | PENDING이면 아직 없음 |
-| `thumbnail_url` | TEXT |  | Y | 사진 리사이즈본. **영상은 항상 NULL** (ADR-052) |
+| `storage_key` | TEXT |  | N | S3 오브젝트 키. 원본 조회는 이 키로 매번 presigned GET을 발급한다 |
+| `thumbnail_key` | TEXT |  | Y | 사진 리사이즈본의 S3 키. **영상은 항상 NULL** (ADR-052) |
 | `width` | INT |  | Y |  |
 | `height` | INT |  | Y |  |
 | `duration_ms` | INT |  | Y | 영상만. 앱이 보낸 값 (ADR-052) |
