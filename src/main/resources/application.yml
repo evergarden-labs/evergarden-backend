@@ -70,6 +70,12 @@ spring:
           max-wait: 30s
         shutdown-timeout: 200ms
 
+# 로그인 없이 개발하기 위한 스위치. true면 토큰 없는 요청을 고정 사용자로 통과시킨다
+# (JwtAuthenticationFilter, DevUserSeeder). 기본은 false — 켜는 곳은 application-dev.yml뿐이고
+# application-prod.yml은 이 값을 명시적으로 false로 고정해 둔다
+dev-auth:
+  enabled: false
+
 # JWT
 jwt:
   secret-key: ${JWT_SECRET_KEY}

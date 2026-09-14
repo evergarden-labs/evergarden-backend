@@ -1,6 +1,11 @@
 # 운영 프로필
 # 공통 설정은 application.yml에 있다. 여기에는 dev와 다른 것만 둔다.
 
+# dev 전용 로그인 우회 스위치. 공통 설정 기본값도 false지만, 운영에서 절대 켜지면
+# 안 되는 값이라 여기서도 명시적으로 고정해 둔다(DevUserSeeder는 dev 프로필에서만 로드되긴 한다)
+dev-auth:
+  enabled: false
+
 # Swagger / OpenAPI
 # 운영에서는 문서를 아예 내린다. 시큐리티가 문서 경로를 열어두므로(SecurityConfig.DOCS)
 # 켜두면 인증 없이 전체 API 구조가 노출된다.

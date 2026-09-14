@@ -34,6 +34,9 @@ import org.springframework.web.filter.OncePerRequestFilter;
  *   <li>인증이 필요한 경로면 {@link JwtAuthenticationEntryPoint}가 적어둔 사유로 응답한다</li>
  * </ul>
  *
+ * <p>{@code dev-auth.enabled=true}(dev 프로필 전용)면 토큰이 없는 요청을 {@link DevUserSeeder}가
+ * 만들어 둔 고정 사용자로 통과시킨다. 소셜 로그인이 없어도 도메인 API를 바로 호출해볼 수 있게 하기 위해서다.
+ *
  * <p>토큰이 유효해도 회원 상태를 <b>매 요청 DB에서 확인</b>한다. 차단·탈퇴는 토큰 발급 뒤에
  * 일어나므로 토큰만 봐서는 알 수 없다. 명세의 생략 규칙상 {@code USER_BLOCKED}·
  * {@code USER_WITHDRAWN}은 인증이 필요한 <b>모든</b> 오퍼레이션에 걸리는 전역 응답이라,
@@ -50,15 +53,21 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider tokenProvider;
     private final UserRepository userRepository;
+    private final DevUserProvider devUserProvider;
     private final int restoreGraceDays;
+    private final boolean devAuthEnabled;
 
     public JwtAuthenticationFilter(
             JwtTokenProvider tokenProvider,
             UserRepository userRepository,
-            @Value("${policy.withdrawal.restore-grace-days}") int restoreGraceDays) {
+            DevUserProvider devUserProvider,
+            @Value("${policy.withdrawal.restore-grace-days}") int restoreGraceDays,
+            @Value("${dev-auth.enabled:false}") boolean devAuthEnabled) {
         this.tokenProvider = tokenProvider;
         this.userRepository = userRepository;
+        this.devUserProvider = devUserProvider;
         this.restoreGraceDays = restoreGraceDays;
+        this.devAuthEnabled = devAuthEnabled;
     }
 
     @Override
@@ -67,8 +76,30 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String token = resolveToken(request);
         if (token != null) {
             authenticate(request, token);
+        } else if (devAuthEnabled) {
+            // 토큰을 아예 안 들고 온 요청만 해당한다. 실제 토큰이 있으면 정상 검증한다 —
+            // 소셜 로그인이 생긴 뒤에도 이 플래그를 켜 둔 채로 실제 토큰을 테스트할 수 있다
+            authenticateAsDevUser(request);
         }
         chain.doFilter(request, response);
+    }
+
+    /** {@link DevUserSeeder}가 만들어 둔 고정 사용자로 인증을 세운다. */
+    private void authenticateAsDevUser(HttpServletRequest request) {
+        Long devUserId = devUserProvider.userId();
+        if (devUserId == null) {
+            // 시더가 아직 안 돌았거나 실패한 상태. 평소처럼 미인증으로 흘려보낸다
+            return;
+        }
+        BusinessException denied = checkUserStatus(devUserId);
+        if (denied != null) {
+            reject(request, denied);
+            return;
+        }
+        AuthPrincipal principal = new AuthPrincipal(devUserId, Role.USER);
+        SecurityContextHolder.getContext().setAuthentication(
+                UsernamePasswordAuthenticationToken.authenticated(
+                        principal, null, principal.authorities()));
     }
 
     private void authenticate(HttpServletRequest request, String token) {

@@ -46,6 +46,8 @@ import org.springframework.web.bind.annotation.RestController;
 @WebMvcTest(controllers = SecurityConfigTest.ProbeController.class)
 @Import({SecurityConfig.class, JwtAuthenticationFilter.class, JwtTokenProvider.class,
         JwtAuthenticationEntryPoint.class, JwtAccessDeniedHandler.class, SecurityErrorResponder.class,
+        // dev-auth 스위치는 기본 false라 여기선 관여하지 않지만, 필터 생성자가 요구하는 빈이라 있어야 한다
+        DevUserProvider.class,
         // @WebMvcTest 슬라이스에는 JsonMapper가 없다. SecurityErrorResponder가 이걸로 봉투를 쓴다
         JacksonAutoConfiguration.class})
 class SecurityConfigTest {
