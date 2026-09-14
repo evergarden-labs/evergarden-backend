@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.matches;
@@ -135,7 +136,7 @@ class MediaServiceTest {
     @Test
     @DisplayName("정상 사진 요청은 PENDING으로 저장되고 업로드 URL을 받는다")
     void 정상_사진_요청() {
-        given(storageService.presignUpload(anyString(), eq("image/jpeg")))
+        given(storageService.presignUpload(anyString(), eq("image/jpeg"), anyLong()))
                 .willReturn(new MediaStorageService.UploadTicket(
                         "https://upload.example.com/x", Instant.now().plusSeconds(600)));
 
@@ -145,14 +146,14 @@ class MediaServiceTest {
         assertThat(tickets).hasSize(1);
         assertThat(tickets.get(0).mediaId()).isEqualTo(100L);
         assertThat(tickets.get(0).uploadUrl()).isEqualTo("https://upload.example.com/x");
-        verify(storageService).presignUpload(matches("media/1/.+\\.jpg"), eq("image/jpeg"));
+        verify(storageService).presignUpload(matches("media/1/.+\\.jpg"), eq("image/jpeg"), eq(1000L));
     }
 
     @Test
     @SuppressWarnings("unchecked")
     @DisplayName("영상은 발급 시점에 받은 해상도·길이를 그대로 저장한다")
     void 영상_해상도와_길이를_그대로_저장한다() {
-        given(storageService.presignUpload(anyString(), eq("video/mp4")))
+        given(storageService.presignUpload(anyString(), eq("video/mp4"), anyLong()))
                 .willReturn(new MediaStorageService.UploadTicket("https://upload", Instant.now()));
         MediaUploadRequest video =
                 new MediaUploadRequest("a.mp4", "video/mp4", 1000L, 1920, 1080, 15000);
@@ -171,7 +172,7 @@ class MediaServiceTest {
     @Test
     @DisplayName("여러 건을 보내면 응답 순서가 요청 순서와 같다")
     void 응답_순서가_요청_순서와_같다() {
-        given(storageService.presignUpload(anyString(), anyString()))
+        given(storageService.presignUpload(anyString(), anyString(), anyLong()))
                 .willReturn(new MediaStorageService.UploadTicket("https://upload", Instant.now()));
 
         List<MediaUploadTicket> tickets = mediaService.issueUploadUrls(

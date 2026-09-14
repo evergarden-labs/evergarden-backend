@@ -1,6 +1,7 @@
 package com.evergarden.evergardenbackend.media;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -64,7 +65,7 @@ class MediaIntegrationTest extends IntegrationTest {
         User user = userRepository.save(User.builder().nickname("테스터").build());
         accessToken = tokenProvider.issueAccessToken(user.getId(), Role.USER);
 
-        given(storageService.presignUpload(anyString(), anyString())).willReturn(
+        given(storageService.presignUpload(anyString(), anyString(), anyLong())).willReturn(
                 new MediaStorageService.UploadTicket("https://upload.example.com/x", Instant.now().plusSeconds(600)));
         given(storageService.presignDownload(anyString()))
                 .willAnswer(invocation -> "https://cdn.example.com/" + invocation.getArgument(0));
