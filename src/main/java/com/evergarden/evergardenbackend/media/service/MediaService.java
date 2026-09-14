@@ -67,8 +67,8 @@ public class MediaService {
         List<MediaUploadTicket> tickets = new ArrayList<>(entities.size());
         for (int i = 0; i < entities.size(); i++) {
             Media media = entities.get(i);
-            MediaStorageService.UploadTicket ticket =
-                    storageService.presignUpload(media.getStorageKey(), files.get(i).contentType());
+            MediaStorageService.UploadTicket ticket = storageService.presignUpload(
+                    media.getStorageKey(), files.get(i).contentType(), files.get(i).sizeBytes());
             tickets.add(new MediaUploadTicket(media.getId(), ticket.url(), ticket.expiresAt()));
         }
         return tickets;
