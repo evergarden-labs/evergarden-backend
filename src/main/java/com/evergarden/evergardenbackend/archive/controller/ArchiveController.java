@@ -3,6 +3,7 @@ package com.evergarden.evergardenbackend.archive.controller;
 import com.evergarden.evergardenbackend.archive.dto.ArchiveCreateRequest;
 import com.evergarden.evergardenbackend.archive.dto.ArchiveDetail;
 import com.evergarden.evergardenbackend.archive.dto.ArchiveSummary;
+import com.evergarden.evergardenbackend.archive.dto.ArchiveTripLinkRequest;
 import com.evergarden.evergardenbackend.archive.dto.ArchiveUpdateRequest;
 import com.evergarden.evergardenbackend.archive.service.ArchiveService;
 import com.evergarden.evergardenbackend.global.response.ApiResponse;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -86,5 +88,20 @@ public class ArchiveController {
             @PathVariable Long archiveId) {
         archiveService.delete(me.userId(), archiveId);
         return ApiResponse.empty();
+    }
+
+    @PutMapping("/{archiveId}/trip")
+    public ApiResponse<ArchiveDetail> linkTrip(
+            @AuthenticationPrincipal AuthPrincipal me,
+            @PathVariable Long archiveId,
+            @Valid @RequestBody ArchiveTripLinkRequest request) {
+        return ApiResponse.of(archiveService.linkTrip(me.userId(), archiveId, request.tripId()));
+    }
+
+    @DeleteMapping("/{archiveId}/trip")
+    public ApiResponse<ArchiveDetail> unlinkTrip(
+            @AuthenticationPrincipal AuthPrincipal me,
+            @PathVariable Long archiveId) {
+        return ApiResponse.of(archiveService.unlinkTrip(me.userId(), archiveId));
     }
 }
