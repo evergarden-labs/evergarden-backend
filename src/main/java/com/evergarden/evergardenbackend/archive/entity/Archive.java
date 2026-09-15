@@ -16,10 +16,13 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
+import java.util.List;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /**
  * 테마 앨범.
@@ -80,15 +83,21 @@ public class Archive extends BaseTimeEntity {
     @JoinColumn(name = "origin_archive_id")
     private Archive originArchive;
 
+    /** 공유 게시물에서 틀만 가져왔을 때(ARCH-16)의 빈 자리 안내. 그 외엔 {@code null}(ADR-057) */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "layout_template", columnDefinition = "jsonb")
+    private List<ArchiveLayoutSlot> layoutTemplate;
+
     @Builder
-    private Archive(User owner, Trip trip, String title, ArchiveTheme theme,
-                    String primaryColor, Archive originArchive) {
+    private Archive(User owner, Trip trip, String title, ArchiveTheme theme, String primaryColor,
+                    Archive originArchive, List<ArchiveLayoutSlot> layoutTemplate) {
         this.owner = owner;
         this.trip = trip;
         this.title = title;
         this.theme = theme;
         this.primaryColor = primaryColor;
         this.originArchive = originArchive;
+        this.layoutTemplate = layoutTemplate;
         this.collaborationStatus = CollaborationStatus.NONE;
     }
 
