@@ -1,5 +1,6 @@
 package com.evergarden.evergardenbackend.archive.dto;
 
+import com.evergarden.evergardenbackend.archive.entity.ArchiveLayoutSlot;
 import com.evergarden.evergardenbackend.archive.entity.ArchiveTheme;
 import com.evergarden.evergardenbackend.archive.entity.CollaborationStatus;
 import com.evergarden.evergardenbackend.archive.entity.CollaboratorRole;
@@ -27,5 +28,6 @@ public record ArchiveDetail(
         LocalDateTime createdAt,
         List<ArchiveItemResponse> items,
         List<CollaboratorResponse> collaborators,
-        Long originArchiveId) {
+        Long originArchiveId,
+        List<ArchiveLayoutSlot> layoutTemplate) {
 }
