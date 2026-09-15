@@ -35,6 +35,7 @@ public class MediaService {
     private final ExifReader exifReader;
     private final ThumbnailGenerator thumbnailGenerator;
     private final StorageProperties storageProperties;
+    private final MediaMapper mediaMapper;
 
     /** {@code POST /media/upload-urls} (ARCH 이전 단계 — 실제 업로드는 앱이 S3로 직접 한다). */
     public List<MediaUploadTicket> issueUploadUrls(Long userId, List<MediaUploadRequest> files) {
@@ -123,7 +124,7 @@ public class MediaService {
             }
         }
 
-        return targets.stream().map(this::toResponse).toList();
+        return targets.stream().map(mediaMapper::toResponse).toList();
     }
 
     private void completeImage(Media media) {
@@ -142,14 +143,6 @@ public class MediaService {
         }
 
         media.complete(thumbnailKey, exif.width(), exif.height(), exif.takenAt(), exif.lat(), exif.lng());
-    }
-
-    private MediaResponse toResponse(Media media) {
-        String url = storageService.presignDownload(media.getStorageKey());
-        String thumbnailUrl = media.getThumbnailKey() != null
-                ? storageService.presignDownload(media.getThumbnailKey())
-                : null;
-        return MediaResponse.of(media, url, thumbnailUrl);
     }
 
     private void checkBatchSize(int size) {
