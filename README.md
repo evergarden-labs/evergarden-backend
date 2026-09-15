@@ -153,6 +153,7 @@ Testcontainers가 PostgreSQL·Redis를 띄운다. 통합 테스트는 컨텍스�
 | `docs/error-codes.md` | 오류 코드 55개 — 실패하면 뭐라고 답하는가 |
 | `docs/decisions.md` | ADR 54건 — **왜 그렇게 정했는가** |
 | `docs/realtime-editing.md` | 공동 편집 WebSocket 규격 (OpenAPI 밖) |
+| `docs/place-data-sync.md` | TourAPI·카카오 로컬 연동 규격 (OpenAPI 밖) |
 | `src/main/resources/static/evergardenapi.yaml` | **API 정본** — 오퍼레이션 104개 |
 
 모든 오퍼레이션에 근거가 된 스토리 ID가 `x-user-stories`로 붙어 있다.
