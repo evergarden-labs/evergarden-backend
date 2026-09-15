@@ -36,10 +36,18 @@ public class ArchiveAccessGuard {
         }
     }
 
-    /** 소유자 전용 작업(삭제, 초대, 공동 편집 종료 등). */
+    /** 소유자 전용 작업(삭제, 일정 연결 등). */
     public void checkOwner(Archive archive, Long userId) {
         if (!archive.isOwnedBy(userId)) {
             throw new BusinessException(ErrorCode.NOT_RESOURCE_OWNER);
+        }
+    }
+
+    /** 소유자 전용이면서 공동 편집이 종료되지 않았어야 하는 작업(초대, 공동 편집 종료). */
+    public void checkOwnerAndEditable(Archive archive, Long userId) {
+        checkOwner(archive, userId);
+        if (!archive.isEditable()) {
+            throw new BusinessException(ErrorCode.COLLABORATION_CLOSED);
         }
     }
 
