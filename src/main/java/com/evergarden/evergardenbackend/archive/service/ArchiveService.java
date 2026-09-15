@@ -81,6 +81,38 @@ public class ArchiveService {
         archiveRepository.delete(archive);
     }
 
+    /**
+     * 여행 일정을 잇는다(ARCH-17). 소유자 전용이다 — 공동편집자는 못 한다.
+     * 이미 다른 일정이 연결돼 있으면 교체하고, 그 일정이 이미 남의 아카이브에 연결돼
+     * 있으면 거부한다. 지금 이 아카이브에 이미 연결된 일정을 다시 보내는 것은 허용한다.
+     */
+    public ArchiveDetail linkTrip(Long userId, Long archiveId, Long tripId) {
+        Archive archive = findArchive(archiveId);
+        accessGuard.checkOwner(archive, userId);
+
+        Trip trip = tripRepository.findById(tripId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.TRIP_NOT_FOUND));
+        if (!trip.isOwnedBy(userId)) {
+            throw new BusinessException(ErrorCode.NOT_RESOURCE_OWNER);
+        }
+        boolean linkedToAnotherArchive = archiveRepository.existsByTrip_Id(tripId)
+                && (archive.getTrip() == null || !archive.getTrip().getId().equals(tripId));
+        if (linkedToAnotherArchive) {
+            throw new BusinessException(ErrorCode.TRIP_ARCHIVE_ALREADY_LINKED);
+        }
+
+        archive.linkTrip(trip);
+        return toDetail(archive, userId);
+    }
+
+    /** 연결만 끊는다. 아카이브도 일정도 삭제되지 않는다(ADR-001). 연결이 없어도 그냥 성공한다. */
+    public ArchiveDetail unlinkTrip(Long userId, Long archiveId) {
+        Archive archive = findArchive(archiveId);
+        accessGuard.checkOwner(archive, userId);
+        archive.linkTrip(null);
+        return toDetail(archive, userId);
+    }
+
     public CursorPage<ArchiveSummary> list(Long userId, String cursor, int size) {
         Long cursorId = CursorCodec.decode(cursor);
         List<Archive> archives = archiveRepository.findAccessible(userId, cursorId, PageRequest.of(0, size + 1));
