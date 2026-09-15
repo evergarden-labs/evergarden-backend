@@ -114,6 +114,11 @@ storage:
     video-max-duration-seconds: 180     # 3분
     max-files-per-request: 20
 
+# 실시간 공동 편집 (ARCH-12 · ADR-051)
+# 앱이 CONNECT할 WebSocket 주소. 프로필별로 다르므로 여기엔 기본값을 두지 않는다
+websocket:
+  public-url: ${WEBSOCKET_URL}
+
 # 정책 값 (ADR-016 · ADR-018 · ADR-044)
 policy:
   region-visit:

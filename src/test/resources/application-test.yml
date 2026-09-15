@@ -38,6 +38,9 @@ oauth:
   kakao:
     app-id: test-app-id
 
+websocket:
+  public-url: ws://localhost:8080/ws
+
 logging:
   level:
     org.testcontainers: INFO
