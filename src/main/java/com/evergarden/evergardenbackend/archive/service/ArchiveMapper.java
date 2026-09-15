@@ -42,7 +42,8 @@ public class ArchiveMapper {
                 coverImageUrl(archive), archive.getStartDate(), archive.getEndDate(), items.size(),
                 archive.getCollaborationStatus(), myRole(archive, viewerId), linkedTripId(archive),
                 archive.getCreatedAt(), itemResponses, collaboratorResponses,
-                archive.getOriginArchive() != null ? archive.getOriginArchive().getId() : null);
+                archive.getOriginArchive() != null ? archive.getOriginArchive().getId() : null,
+                archive.getLayoutTemplate());
     }
 
     public ArchiveItemResponse toItemResponse(Archive archive, ArchiveItem item) {
