@@ -205,6 +205,7 @@
 | `end_date` | DATE |  | Y | 파생값 — 담긴 사진 taken_at의 최댓값 |
 | `collaboration_status` | VARCHAR(10) |  | N | NONE / OPEN / CLOSED |
 | `origin_archive_id` | BIGINT | FK | Y | → archives. 복제 계보 (ADR-005) |
+| `layout_template` | JSONB |  | Y | 가져오기(ARCH-16)로 만든 빈 자리 안내. `[{sortOrder, layout}]`, 그 외엔 NULL (ADR-057) |
 
 ## `archive_items` · 배치된 사진 한 장
 

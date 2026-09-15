@@ -82,6 +82,16 @@ public class ArchiveCollaborator extends BaseTimeEntity {
         return new ArchiveCollaborator(archive, user, CollaboratorRole.EDITOR, CollaboratorStatus.INVITED, now);
     }
 
+    /**
+     * 한 번 나갔던(LEFT) 사람을 다시 초대한다. {@code (archive_id, user_id)}가 유니크라
+     * 새 행을 못 만들고, 있던 행을 초대 상태로 되돌린다.
+     */
+    public void reinvite(LocalDateTime now) {
+        this.status = CollaboratorStatus.INVITED;
+        this.invitedAt = now;
+        this.joinedAt = null;
+    }
+
     /** 초대를 수락한다(ARCH-11). */
     public void accept(LocalDateTime now) {
         this.status = CollaboratorStatus.JOINED;

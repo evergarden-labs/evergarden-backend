@@ -64,7 +64,7 @@ class MediaServiceTest {
     private final MediaService mediaService = new MediaService(
             mediaRepository, userRepository,
             new ContentTypePolicy(storageProperties), new MediaKeyGenerator(), storageService,
-            new ExifReader(), new ThumbnailGenerator(), storageProperties);
+            new ExifReader(), new ThumbnailGenerator(), storageProperties, new MediaMapper(storageService));
 
     private final AtomicLong nextId = new AtomicLong(100);
 

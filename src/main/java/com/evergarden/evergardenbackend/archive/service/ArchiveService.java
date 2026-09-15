@@ -1,0 +1,198 @@
+package com.evergarden.evergardenbackend.archive.service;
+
+import com.evergarden.evergardenbackend.archive.dto.ArchiveCreateRequest;
+import com.evergarden.evergardenbackend.archive.dto.ArchiveDetail;
+import com.evergarden.evergardenbackend.archive.dto.ArchiveSummary;
+import com.evergarden.evergardenbackend.archive.dto.ArchiveUpdateRequest;
+import com.evergarden.evergardenbackend.archive.entity.Archive;
+import com.evergarden.evergardenbackend.archive.entity.ArchiveCollaborator;
+import com.evergarden.evergardenbackend.archive.entity.ArchiveItem;
+import com.evergarden.evergardenbackend.archive.event.ArchiveRealtimeEvent;
+import com.evergarden.evergardenbackend.archive.repository.ArchiveCollaboratorRepository;
+import com.evergarden.evergardenbackend.archive.repository.ArchiveItemRepository;
+import com.evergarden.evergardenbackend.archive.repository.ArchiveRepository;
+import com.evergarden.evergardenbackend.global.exception.BusinessException;
+import com.evergarden.evergardenbackend.global.exception.ErrorCode;
+import com.evergarden.evergardenbackend.global.response.CursorMeta;
+import com.evergarden.evergardenbackend.global.response.CursorPage;
+import com.evergarden.evergardenbackend.global.util.CursorCodec;
+import com.evergarden.evergardenbackend.trip.entity.Trip;
+import com.evergarden.evergardenbackend.trip.repository.TripRepository;
+import com.evergarden.evergardenbackend.user.entity.User;
+import com.evergarden.evergardenbackend.user.repository.UserRepository;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/** 아카이브 기본 CRUD(ARCH-01·02·03·04·05·09). */
+@Service
+@RequiredArgsConstructor
+@Transactional
+public class ArchiveService {
+
+    private final ArchiveRepository archiveRepository;
+    private final ArchiveItemRepository archiveItemRepository;
+    private final ArchiveCollaboratorRepository collaboratorRepository;
+    private final UserRepository userRepository;
+    private final TripRepository tripRepository;
+    private final ArchiveAccessGuard accessGuard;
+    private final ArchiveMapper archiveMapper;
+    private final ApplicationEventPublisher eventPublisher;
+
+    public ArchiveDetail create(Long userId, ArchiveCreateRequest request) {
+        User owner = userRepository.getReferenceById(userId);
+        Trip trip = linkableTrip(userId, request.tripId());
+
+        Archive archive = Archive.builder()
+                .owner(owner)
+                .trip(trip)
+                .title(request.title())
+                .theme(request.theme())
+                .primaryColor(request.primaryColor())
+                .build();
+        archiveRepository.save(archive);
+        collaboratorRepository.save(ArchiveCollaborator.owner(archive, owner, LocalDateTime.now()));
+
+        return toDetail(archive, userId);
+    }
+
+    public ArchiveDetail get(Long userId, Long archiveId) {
+        Archive archive = findArchive(archiveId);
+        accessGuard.checkViewable(archive, userId);
+        return toDetail(archive, userId);
+    }
+
+    public ArchiveDetail update(Long userId, Long archiveId, ArchiveUpdateRequest request) {
+        if (request.isEmpty()) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST);
+        }
+        Archive archive = findArchive(archiveId);
+        accessGuard.checkEditable(archive, userId);
+
+        archive.update(request.title(), request.theme(), request.primaryColor());
+        eventPublisher.publishEvent(
+                new ArchiveRealtimeEvent(archiveId, userId, "archive.updated", changedFields(request)));
+        return toDetail(archive, userId);
+    }
+
+    /** 실시간 알림의 "바뀐 필드만" 정책(문서 3.1절) — 보낸 필드만 담는다. */
+    private Map<String, Object> changedFields(ArchiveUpdateRequest request) {
+        Map<String, Object> fields = new LinkedHashMap<>();
+        if (request.title() != null) {
+            fields.put("title", request.title());
+        }
+        if (request.theme() != null) {
+            fields.put("theme", request.theme());
+        }
+        if (request.primaryColor() != null) {
+            fields.put("primaryColor", request.primaryColor());
+        }
+        return fields;
+    }
+
+    public void delete(Long userId, Long archiveId) {
+        Archive archive = findArchive(archiveId);
+        accessGuard.checkOwner(archive, userId);
+        archiveRepository.delete(archive);
+    }
+
+    /**
+     * 여행 일정을 잇는다(ARCH-17). 소유자 전용이다 — 공동편집자는 못 한다.
+     * 이미 다른 일정이 연결돼 있으면 교체하고, 그 일정이 이미 남의 아카이브에 연결돼
+     * 있으면 거부한다. 지금 이 아카이브에 이미 연결된 일정을 다시 보내는 것은 허용한다.
+     */
+    public ArchiveDetail linkTrip(Long userId, Long archiveId, Long tripId) {
+        Archive archive = findArchive(archiveId);
+        accessGuard.checkOwner(archive, userId);
+
+        Trip trip = tripRepository.findById(tripId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.TRIP_NOT_FOUND));
+        if (!trip.isOwnedBy(userId)) {
+            throw new BusinessException(ErrorCode.NOT_RESOURCE_OWNER);
+        }
+        boolean linkedToAnotherArchive = archiveRepository.existsByTrip_Id(tripId)
+                && (archive.getTrip() == null || !archive.getTrip().getId().equals(tripId));
+        if (linkedToAnotherArchive) {
+            throw new BusinessException(ErrorCode.TRIP_ARCHIVE_ALREADY_LINKED);
+        }
+
+        archive.linkTrip(trip);
+        return toDetail(archive, userId);
+    }
+
+    /** 연결만 끊는다. 아카이브도 일정도 삭제되지 않는다(ADR-001). 연결이 없어도 그냥 성공한다. */
+    public ArchiveDetail unlinkTrip(Long userId, Long archiveId) {
+        Archive archive = findArchive(archiveId);
+        accessGuard.checkOwner(archive, userId);
+        archive.linkTrip(null);
+        return toDetail(archive, userId);
+    }
+
+    public CursorPage<ArchiveSummary> list(Long userId, String cursor, int size) {
+        Long cursorId = CursorCodec.decode(cursor);
+        List<Archive> archives = archiveRepository.findAccessible(userId, cursorId, PageRequest.of(0, size + 1));
+        return toPage(archives, userId, size);
+    }
+
+    public CursorPage<ArchiveSummary> search(Long userId, String keyword, LocalDate from, LocalDate to,
+                                             String cursor, int size) {
+        if (keyword == null && from == null && to == null) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST);
+        }
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new BusinessException(ErrorCode.INVALID_DATE_RANGE);
+        }
+        Long cursorId = CursorCodec.decode(cursor);
+        List<Archive> archives = archiveRepository.search(
+                userId, cursorId, keyword, from, to, PageRequest.of(0, size + 1));
+        return toPage(archives, userId, size);
+    }
+
+    /** {@code tripId}가 있으면 소유·중복 연결을 검증하고 돌려준다. 없으면 {@code null}(ADR-001). */
+    private Trip linkableTrip(Long userId, Long tripId) {
+        if (tripId == null) {
+            return null;
+        }
+        Trip trip = tripRepository.findById(tripId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.TRIP_NOT_FOUND));
+        if (!trip.isOwnedBy(userId)) {
+            throw new BusinessException(ErrorCode.NOT_RESOURCE_OWNER);
+        }
+        if (archiveRepository.existsByTrip_Id(tripId)) {
+            throw new BusinessException(ErrorCode.TRIP_ARCHIVE_ALREADY_LINKED);
+        }
+        return trip;
+    }
+
+    private Archive findArchive(Long archiveId) {
+        return archiveRepository.findById(archiveId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.ARCHIVE_NOT_FOUND));
+    }
+
+    private ArchiveDetail toDetail(Archive archive, Long userId) {
+        List<ArchiveItem> items = archiveItemRepository.findByArchiveOrderBySortOrderAsc(archive);
+        List<ArchiveCollaborator> collaborators = collaboratorRepository.findByArchive(archive);
+        return archiveMapper.toDetail(archive, items, collaborators, userId);
+    }
+
+    private CursorPage<ArchiveSummary> toPage(List<Archive> fetched, Long userId, int size) {
+        boolean hasNext = fetched.size() > size;
+        List<Archive> page = hasNext ? fetched.subList(0, size) : fetched;
+
+        List<ArchiveSummary> summaries = page.stream()
+                .map(a -> archiveMapper.toSummary(a, (int) archiveItemRepository.countByArchive(a), userId))
+                .toList();
+
+        CursorMeta meta = hasNext
+                ? CursorMeta.of(CursorCodec.encode(page.get(page.size() - 1).getId()))
+                : CursorMeta.last();
+        return new CursorPage<>(summaries, meta);
+    }
+}
