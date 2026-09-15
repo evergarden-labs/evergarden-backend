@@ -117,4 +117,21 @@ class ArchiveAccessGuardTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.COLLABORATION_CLOSED);
     }
+
+    @Test
+    @DisplayName("checkOwnerAndEditable — 소유자가 아니면 NOT_RESOURCE_OWNER, 종료됐으면 COLLABORATION_CLOSED")
+    void 소유자전용_편집가능_검사() {
+        Archive archive = archive();
+        given(collaboratorRepository.findByArchiveAndUser_Id(archive, EDITOR_ID))
+                .willReturn(Optional.of(collaborator(archive, CollaboratorStatus.JOINED)));
+
+        assertThatThrownBy(() -> guard.checkOwnerAndEditable(archive, EDITOR_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.NOT_RESOURCE_OWNER);
+
+        archive.closeCollaboration();
+        assertThatThrownBy(() -> guard.checkOwnerAndEditable(archive, OWNER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.COLLABORATION_CLOSED);
+    }
 }
