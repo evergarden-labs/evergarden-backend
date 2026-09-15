@@ -15,7 +15,7 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
 
 /**
- * S3 접근을 이 클래스 하나로 모은다(ADR-023 · ADR-055). 다른 클래스는 SDK를 직접 부르지 않는다 —
+ * S3 접근을 이 클래스 하나로 모은다(ADR-023 · ADR-056). 다른 클래스는 SDK를 직접 부르지 않는다 —
  * 버킷 이름·리전 같은 세부사항이 여기에만 있으면 나중에 스토리지를 바꿔도 여기만 고치면 된다.
  */
 @Component
@@ -51,7 +51,7 @@ public class MediaStorageService {
         return new UploadTicket(presigned.url().toString(), Instant.now().plus(ttl));
     }
 
-    /** 조회(GET) URL을 발급한다(ADR-055). 버킷이 비공개라 조회할 때마다 새로 만든다. */
+    /** 조회(GET) URL을 발급한다(ADR-056). 버킷이 비공개라 조회할 때마다 새로 만든다. */
     public String presignDownload(String key) {
         Duration ttl = Duration.ofMinutes(storageProperties.s3().presignedDownloadUrlExpiryMinutes());
         GetObjectRequest getRequest = GetObjectRequest.builder()

@@ -3,7 +3,7 @@ package com.evergarden.evergardenbackend.media.service;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 
-/** S3 오브젝트 키 규칙(ADR-055) — {@code media/{userId}/{uuid}.{ext}}, 썸네일은 같은 이름에 접미사만 붙인다. */
+/** S3 오브젝트 키 규칙(ADR-056) — {@code media/{userId}/{uuid}.{ext}}, 썸네일은 같은 이름에 접미사만 붙인다. */
 @Component
 public class MediaKeyGenerator {
 

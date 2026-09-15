@@ -20,7 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** MEDIA-01. 업로드 URL 발급과 완료 처리를 맡는다(ADR-023 · ADR-055). */
+/** MEDIA-01. 업로드 URL 발급과 완료 처리를 맡는다(ADR-023 · ADR-056). */
 @Slf4j
 @Service
 @RequiredArgsConstructor

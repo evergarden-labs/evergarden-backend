@@ -7,7 +7,7 @@ import net.coobird.thumbnailator.Thumbnails;
 import org.springframework.stereotype.Component;
 
 /**
- * 사진 리사이즈본을 만든다(ADR-055). 영상은 만들지 않는다(ADR-052).
+ * 사진 리사이즈본을 만든다(ADR-056). 영상은 만들지 않는다(ADR-052).
  *
  * <p><b>한계</b> — JDK 표준 ImageIO 기반이라 JPEG·PNG만 확실히 지원한다. HEIC·WEBP는
  * 플랫폼에 디코더가 없으면 실패할 수 있다. 실패해도 업로드 자체를 막지 않도록

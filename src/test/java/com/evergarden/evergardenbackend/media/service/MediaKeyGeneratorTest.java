@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-/** S3 오브젝트 키 규칙(ADR-055). */
+/** S3 오브젝트 키 규칙(ADR-056). */
 class MediaKeyGeneratorTest {
 
     private final MediaKeyGenerator generator = new MediaKeyGenerator();

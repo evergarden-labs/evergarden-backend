@@ -852,7 +852,7 @@ Redis를 고른 이유는 TTL이 만료 기간과 정확히 맞아떨어져 별�
 **영향** — AUTH-01·AUTH-03·AUTH-05 / `POST /auth/social/{provider}`·`POST /auth/token/refresh`·
 `POST /auth/logout` / `docs/erd.md`의 "저장소에 두지 않는 것" 항목을 구체화
 
-### ADR-055 · 미디어 조회도 presigned GET으로 하고, 원본·썸네일은 URL이 아니라 키로 저장한다
+### ADR-056 · 미디어 조회도 presigned GET으로 하고, 원본·썸네일은 URL이 아니라 키로 저장한다
 
 업로드(ADR-023)와 대칭으로, 조회도 버킷을 비공개로 둔 채 presigned GET으로 합니다.
 그래서 `media.url`·`media.thumbnail_url` 컬럼을 없애고 `storage_key`(원본)·`thumbnail_key`(썸네일)만
@@ -870,6 +870,56 @@ API 응답의 `url`·`thumbnailUrl`은 조회 시점에 그 키로 서버가 매
 버킷·키 구조를 다시 만들 필요가 없습니다.
 
 **영향** — MEDIA-01 / `media` 테이블 `url`·`thumbnail_url` 삭제, `thumbnail_key` 추가 (**ERD 반영 완료**)
+
+---
+
+### ADR-057 · 가져온 아카이브의 빈 자리는 `ArchiveItem`이 아니라 레이아웃 템플릿으로 둔다
+
+`importSharedArchive`(ARCH-16)는 사진 없이 배치·순서만 가져와 "빈 자리만 있는 아카이브"를 만듭니다.
+이 빈 자리를 `ArchiveItem` 행으로 만들지 않고, `archives.layout_template`(JSONB, nullable)에
+`[{sortOrder, layout}]` 배열로만 저장합니다. `ArchiveItem.media`는 그대로 `NOT NULL`을 유지합니다.
+
+가져온 직후 `items`는 빈 배열이고, 앱은 `layout_template`을 참고해 화면에 빈 자리 윤곽을
+안내로 보여줍니다. 사용자가 사진을 넣을 때는 기존 `addArchiveItems`(ARCH-06)를 그대로 씁니다 —
+새 오퍼레이션이 없습니다.
+
+**이유** — 빈 자리를 진짜 `ArchiveItem`으로 만들려면 (1) `ArchiveItem.media`를 명세의
+`required`에서 빼야 하고 (2) 빈 자리에 나중에 사진을 채워 넣는 방법이 지금 API에 아예 없어
+`updateArchiveItem`에 `mediaId`를 추가하는 등 새 상호작용을 만들어야 합니다.
+템플릿 방식은 `ArchiveItem` 계약을 전혀 안 건드리고 기존 오퍼레이션을 재사용합니다.
+
+**대가** — 서버가 "정확히 이 자리에 넣어라"를 강제하지 않습니다. 앱이 가이드로 보여줄 뿐이고
+사용자가 다른 위치에 넣어도 막지 않습니다. 강제할 근거가 되는 유저 스토리가 없어 문제로 보지 않습니다.
+
+**영향** — ARCH-16 / `archives` 테이블에 `layout_template` 컬럼 추가 (**ERD 반영 필요**) /
+`ArchiveDetail` 응답에 `layoutTemplate`(선택 필드, 원본이 있을 때만) 추가 필요 — `ArchiveItem` 스키마는 안 건드림
+
+---
+
+### ADR-058 · 커서 토큰은 마지막으로 본 항목의 `id`를 Base64로 감싼 값이다
+
+ADR-011이 "커서 방식을 쓴다"까지만 정하고 토큰 안에 뭘 담을지는 정하지 않았습니다. 여기서
+`listArchives`(ARCH-03)·`searchArchives`(ARCH-04)에 쓸 실제 포맷을 정합니다.
+
+**정렬 기준**: `id DESC`. `archives.id`가 `BIGSERIAL`이라 생성 순서와 그대로 일치해
+별도의 정렬 컬럼(예: `created_at`) 없이 `id`만으로 최신순이 됩니다.
+
+**커서 값**: 마지막으로 본 항목의 `id`를 Base64로 인코딩한 문자열. `CursorMeta`가 이미
+"서버가 만든 불투명한 문자열이라 클라이언트가 해석하지 않는다"고 정해뒀으므로, 원래 값이
+단순한 정수여도 그대로 노출하지 않고 감쌉니다.
+
+**조회 방식**: `WHERE id < :cursorId ORDER BY id DESC LIMIT :size + 1`로 `size`보다 하나 더
+가져와, 넘치면 `hasNext=true`로 그 항목을 잘라내고 마지막 항목의 `id`를 다음 커서로 씁니다.
+넘치지 않으면 `hasNext=false`·`nextCursor=null`(`CursorMeta.last()`).
+
+`searchArchives`는 같은 방식 위에 `keyword`·`from`·`to` 조건을 `AND`로 얹습니다 — 정렬·커서
+로직은 동일합니다.
+
+**한계** — 이 방식은 정렬 기준이 단조 증가하는 값(`id`) 하나일 때만 단순합니다. 커뮤니티 피드의
+인기순(`POPULAR`, `like_count` 기준)처럼 정렬 기준이 바뀌는 화면은 `(정렬값, id)` 복합 키를
+커서에 같이 담아야 해서, 그 도메인을 만들 때 별도로 정해야 합니다.
+
+**영향** — ARCH-03·ARCH-04 / 향후 다른 커서 목록(타임캡슐 등)도 `id` 단독 정렬이면 같은 방식을 따름
 
 ---
 

@@ -27,7 +27,7 @@ import lombok.NoArgsConstructor;
  * 사진의 촬영 시각·좌표·해상도는 서버가 EXIF에서 읽지만,
  * 영상은 서버가 열어보지 않으므로 앱이 보낸 값을 그대로 쓴다(ADR-052).
  *
- * <p><b>URL을 저장하지 않고 S3 키만 저장한다</b>(ADR-055). 조회는 presigned GET이라
+ * <p><b>URL을 저장하지 않고 S3 키만 저장한다</b>(ADR-056). 조회는 presigned GET이라
  * 발급 순간부터 만료 카운트다운이 시작돼, DB에 박아둬도 곧 못 쓰게 된다.
  * 응답의 {@code url}·{@code thumbnailUrl}은 서비스가 이 키로 조회 시점에 매번 새로 만든다.
  */
@@ -53,7 +53,7 @@ public class Media extends BaseTimeEntity {
     @Column(nullable = false, length = 10)
     private MediaType type;
 
-    /** 원본의 S3 키. 조회 시점에 이 키로 presigned GET을 발급한다(ADR-055) */
+    /** 원본의 S3 키. 조회 시점에 이 키로 presigned GET을 발급한다(ADR-056) */
     @Column(name = "storage_key", nullable = false, columnDefinition = "text")
     private String storageKey;
 
