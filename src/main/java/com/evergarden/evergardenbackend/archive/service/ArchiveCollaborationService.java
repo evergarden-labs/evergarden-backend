@@ -1,21 +1,27 @@
 package com.evergarden.evergardenbackend.archive.service;
 
 import com.evergarden.evergardenbackend.archive.dto.ArchiveDetail;
+import com.evergarden.evergardenbackend.archive.dto.CollaborationSession;
 import com.evergarden.evergardenbackend.archive.dto.CollaboratorResponse;
 import com.evergarden.evergardenbackend.archive.entity.Archive;
 import com.evergarden.evergardenbackend.archive.entity.ArchiveCollaborator;
 import com.evergarden.evergardenbackend.archive.entity.ArchiveItem;
 import com.evergarden.evergardenbackend.archive.entity.CollaboratorStatus;
+import com.evergarden.evergardenbackend.archive.event.ArchiveRealtimeEvent;
 import com.evergarden.evergardenbackend.archive.repository.ArchiveCollaboratorRepository;
 import com.evergarden.evergardenbackend.archive.repository.ArchiveItemRepository;
 import com.evergarden.evergardenbackend.archive.repository.ArchiveRepository;
+import com.evergarden.evergardenbackend.archive.websocket.ArchiveEditorRegistry;
 import com.evergarden.evergardenbackend.global.exception.BusinessException;
 import com.evergarden.evergardenbackend.global.exception.ErrorCode;
 import com.evergarden.evergardenbackend.user.entity.User;
 import com.evergarden.evergardenbackend.user.repository.UserRepository;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,6 +42,25 @@ public class ArchiveCollaborationService {
     private final UserRepository userRepository;
     private final ArchiveAccessGuard accessGuard;
     private final ArchiveMapper archiveMapper;
+    private final ArchiveEditorRegistry editorRegistry;
+    private final ApplicationEventPublisher eventPublisher;
+
+    @Value("${websocket.public-url}")
+    private String websocketUrl;
+
+    /** 실시간 편집 접속 정보를 발급한다(ARCH-12). 편집 권한이 있어야 하고, 종료됐으면 못 받는다. */
+    public CollaborationSession getSession(Long userId, Long archiveId) {
+        Archive archive = findArchive(archiveId);
+        accessGuard.checkEditable(archive, userId);
+
+        Set<Long> activeUserIds = Set.copyOf(editorRegistry.activeUserIds(archiveId));
+        List<CollaboratorResponse> activeEditors = collaboratorRepository.findByArchive(archive).stream()
+                .filter(c -> activeUserIds.contains(c.getUser().getId()))
+                .map(CollaboratorResponse::of)
+                .toList();
+
+        return new CollaborationSession(websocketUrl, "/topic/archives/" + archiveId, activeEditors);
+    }
 
     /** 소유자만 초대할 수 있다. 처음 초대하면 공동 편집이 열린다(ARCH-10). */
     public CollaboratorResponse invite(Long userId, Long archiveId, Long inviteeId) {
@@ -94,6 +119,7 @@ public class ArchiveCollaborationService {
         Archive archive = findArchive(archiveId);
         accessGuard.checkOwnerAndEditable(archive, userId);
         archive.closeCollaboration();
+        eventPublisher.publishEvent(new ArchiveRealtimeEvent(archiveId, userId, "collaboration.closed", null));
         return toDetail(archive, userId);
     }
 

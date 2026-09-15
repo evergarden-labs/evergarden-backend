@@ -7,6 +7,7 @@ import com.evergarden.evergardenbackend.archive.dto.ArchiveUpdateRequest;
 import com.evergarden.evergardenbackend.archive.entity.Archive;
 import com.evergarden.evergardenbackend.archive.entity.ArchiveCollaborator;
 import com.evergarden.evergardenbackend.archive.entity.ArchiveItem;
+import com.evergarden.evergardenbackend.archive.event.ArchiveRealtimeEvent;
 import com.evergarden.evergardenbackend.archive.repository.ArchiveCollaboratorRepository;
 import com.evergarden.evergardenbackend.archive.repository.ArchiveItemRepository;
 import com.evergarden.evergardenbackend.archive.repository.ArchiveRepository;
@@ -21,8 +22,11 @@ import com.evergarden.evergardenbackend.user.entity.User;
 import com.evergarden.evergardenbackend.user.repository.UserRepository;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +44,7 @@ public class ArchiveService {
     private final TripRepository tripRepository;
     private final ArchiveAccessGuard accessGuard;
     private final ArchiveMapper archiveMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     public ArchiveDetail create(Long userId, ArchiveCreateRequest request) {
         User owner = userRepository.getReferenceById(userId);
@@ -72,7 +77,24 @@ public class ArchiveService {
         accessGuard.checkEditable(archive, userId);
 
         archive.update(request.title(), request.theme(), request.primaryColor());
+        eventPublisher.publishEvent(
+                new ArchiveRealtimeEvent(archiveId, userId, "archive.updated", changedFields(request)));
         return toDetail(archive, userId);
+    }
+
+    /** 실시간 알림의 "바뀐 필드만" 정책(문서 3.1절) — 보낸 필드만 담는다. */
+    private Map<String, Object> changedFields(ArchiveUpdateRequest request) {
+        Map<String, Object> fields = new LinkedHashMap<>();
+        if (request.title() != null) {
+            fields.put("title", request.title());
+        }
+        if (request.theme() != null) {
+            fields.put("theme", request.theme());
+        }
+        if (request.primaryColor() != null) {
+            fields.put("primaryColor", request.primaryColor());
+        }
+        return fields;
     }
 
     public void delete(Long userId, Long archiveId) {

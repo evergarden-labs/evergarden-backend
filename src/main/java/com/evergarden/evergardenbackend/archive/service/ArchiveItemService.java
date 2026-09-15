@@ -10,6 +10,7 @@ import com.evergarden.evergardenbackend.archive.entity.Archive;
 import com.evergarden.evergardenbackend.archive.entity.ArchiveCollaborator;
 import com.evergarden.evergardenbackend.archive.entity.ArchiveItem;
 import com.evergarden.evergardenbackend.archive.entity.ArchiveLayout;
+import com.evergarden.evergardenbackend.archive.event.ArchiveRealtimeEvent;
 import com.evergarden.evergardenbackend.archive.repository.ArchiveCollaboratorRepository;
 import com.evergarden.evergardenbackend.archive.repository.ArchiveItemRepository;
 import com.evergarden.evergardenbackend.archive.repository.ArchiveRepository;
@@ -27,6 +28,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,6 +44,7 @@ public class ArchiveItemService {
     private final MediaRepository mediaRepository;
     private final ArchiveAccessGuard accessGuard;
     private final ArchiveMapper archiveMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     public List<ArchiveItemResponse> addItems(Long userId, Long archiveId, ArchiveItemsAddRequest request) {
         Archive archive = findArchive(archiveId);
@@ -79,7 +82,10 @@ public class ArchiveItemService {
         archiveItemRepository.saveAll(created);
         refreshPeriod(archive);
 
-        return created.stream().map(item -> archiveMapper.toItemResponse(archive, item)).toList();
+        List<ArchiveItemResponse> responses = created.stream()
+                .map(item -> archiveMapper.toItemResponse(archive, item)).toList();
+        eventPublisher.publishEvent(new ArchiveRealtimeEvent(archiveId, userId, "item.added", responses));
+        return responses;
     }
 
     public ArchiveItemResponse updateItem(Long userId, Long archiveId, Long itemId,
@@ -93,7 +99,9 @@ public class ArchiveItemService {
         validateLayout(request.layout());
 
         item.update(request.sortOrder(), request.layout(), request.caption());
-        return archiveMapper.toItemResponse(archive, item);
+        ArchiveItemResponse response = archiveMapper.toItemResponse(archive, item);
+        eventPublisher.publishEvent(new ArchiveRealtimeEvent(archiveId, userId, "item.updated", response));
+        return response;
     }
 
     public void removeItem(Long userId, Long archiveId, Long itemId) {
@@ -107,6 +115,8 @@ public class ArchiveItemService {
         archiveItemRepository.delete(item);
         renumberRemaining(archive);
         refreshPeriod(archive);
+        eventPublisher.publishEvent(
+                new ArchiveRealtimeEvent(archiveId, userId, "item.removed", Map.of("itemId", itemId)));
     }
 
     /** 전체 항목을 통째로 다시 배치한다(ARCH-07). 부분 전송은 거부한다. */
@@ -130,7 +140,11 @@ public class ArchiveItemService {
         for (ArchiveLayoutRequest.Item req : request.items()) {
             byId.get(req.itemId()).reorder(req.sortOrder(), req.layout());
         }
-        return toDetail(archive, userId);
+
+        ArchiveDetail detail = toDetail(archive, userId);
+        eventPublisher.publishEvent(
+                new ArchiveRealtimeEvent(archiveId, userId, "layout.replaced", detail.items()));
+        return detail;
     }
 
     public ArchiveDetail setCover(Long userId, Long archiveId, ArchiveCoverRequest request) {
@@ -142,6 +156,8 @@ public class ArchiveItemService {
             throw new BusinessException(ErrorCode.INVALID_REQUEST);
         }
         archive.changeCover(item);
+        eventPublisher.publishEvent(
+                new ArchiveRealtimeEvent(archiveId, userId, "cover.changed", Map.of("itemId", request.itemId())));
         return toDetail(archive, userId);
     }
 
