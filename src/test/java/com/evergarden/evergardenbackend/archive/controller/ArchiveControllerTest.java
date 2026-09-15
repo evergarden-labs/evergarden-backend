@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -192,5 +193,41 @@ class ArchiveControllerTest {
         mvc.perform(delete("/archives/5").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").doesNotExist());
+    }
+
+    // ── 일정 연결(ARCH-17) ───────────────────────────────────────
+
+    @Test
+    @DisplayName("tripId가 없으면 INVALID_REQUEST")
+    void 일정연결_tripId_누락() throws Exception {
+        mvc.perform(put("/archives/5/trip")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    @DisplayName("이미 다른 아카이브에 연결된 일정이면 409가 그대로 전달된다")
+    void 일정연결_이미_연결됨() throws Exception {
+        given(archiveService.linkTrip(eq(1L), eq(5L), eq(100L)))
+                .willThrow(new BusinessException(ErrorCode.TRIP_ARCHIVE_ALREADY_LINKED));
+
+        mvc.perform(put("/archives/5/trip")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"tripId\":100}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("TRIP_ARCHIVE_ALREADY_LINKED"));
+    }
+
+    @Test
+    @DisplayName("연결 해제는 서비스에 위임한다")
+    void 일정연결_해제() throws Exception {
+        given(archiveService.unlinkTrip(eq(1L), eq(5L))).willReturn(mock(ArchiveDetail.class));
+
+        mvc.perform(delete("/archives/5/trip").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk());
     }
 }

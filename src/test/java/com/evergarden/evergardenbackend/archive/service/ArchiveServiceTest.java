@@ -183,6 +183,86 @@ class ArchiveServiceTest {
         verify(archiveRepository).delete(archive);
     }
 
+    // ── linkTrip / unlinkTrip (ARCH-17) ─────────────────────────────
+
+    @Test
+    @DisplayName("없는 일정이면 TRIP_NOT_FOUND")
+    void 연결_없는_일정() {
+        Archive archive = archiveOwnedBy(USER_ID);
+        given(archiveRepository.findById(1L)).willReturn(Optional.of(archive));
+        given(tripRepository.findById(100L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> archiveService.linkTrip(USER_ID, 1L, 100L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.TRIP_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("남의 일정이면 NOT_RESOURCE_OWNER")
+    void 연결_남의_일정() {
+        Archive archive = archiveOwnedBy(USER_ID);
+        given(archiveRepository.findById(1L)).willReturn(Optional.of(archive));
+        given(tripRepository.findById(100L)).willReturn(Optional.of(tripOwnedBy(999L)));
+
+        assertThatThrownBy(() -> archiveService.linkTrip(USER_ID, 1L, 100L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.NOT_RESOURCE_OWNER);
+    }
+
+    @Test
+    @DisplayName("이미 다른 아카이브에 연결된 일정이면 TRIP_ARCHIVE_ALREADY_LINKED")
+    void 연결_이미_다른_아카이브에_연결됨() {
+        Archive archive = archiveOwnedBy(USER_ID);
+        given(archiveRepository.findById(1L)).willReturn(Optional.of(archive));
+        given(tripRepository.findById(100L)).willReturn(Optional.of(tripOwnedBy(USER_ID)));
+        given(archiveRepository.existsByTrip_Id(100L)).willReturn(true);
+
+        assertThatThrownBy(() -> archiveService.linkTrip(USER_ID, 1L, 100L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.TRIP_ARCHIVE_ALREADY_LINKED);
+    }
+
+    @Test
+    @DisplayName("지금 이 아카이브에 이미 연결된 일정을 다시 보내면 그대로 통과한다")
+    void 연결_같은_일정_재연결() {
+        Archive archive = archiveOwnedBy(USER_ID);
+        Trip trip = tripOwnedBy(USER_ID);
+        ReflectionTestUtils.setField(archive, "trip", trip);
+        given(archiveRepository.findById(1L)).willReturn(Optional.of(archive));
+        given(tripRepository.findById(trip.getId())).willReturn(Optional.of(trip));
+        given(archiveRepository.existsByTrip_Id(trip.getId())).willReturn(true);
+
+        archiveService.linkTrip(USER_ID, 1L, trip.getId());
+
+        assertThat(archive.getTrip()).isEqualTo(trip);
+    }
+
+    @Test
+    @DisplayName("정상 연결은 소유자 전용 검사를 거치고 트립을 바꾼다")
+    void 연결_정상() {
+        Archive archive = archiveOwnedBy(USER_ID);
+        Trip trip = tripOwnedBy(USER_ID);
+        given(archiveRepository.findById(1L)).willReturn(Optional.of(archive));
+        given(tripRepository.findById(trip.getId())).willReturn(Optional.of(trip));
+
+        archiveService.linkTrip(USER_ID, 1L, trip.getId());
+
+        verify(accessGuard).checkOwner(archive, USER_ID);
+        assertThat(archive.getTrip()).isEqualTo(trip);
+    }
+
+    @Test
+    @DisplayName("연결 해제는 연결이 없어도 그냥 성공한다")
+    void 연결해제_정상() {
+        Archive archive = archiveOwnedBy(USER_ID);
+        given(archiveRepository.findById(1L)).willReturn(Optional.of(archive));
+
+        archiveService.unlinkTrip(USER_ID, 1L);
+
+        verify(accessGuard).checkOwner(archive, USER_ID);
+        assertThat(archive.getTrip()).isNull();
+    }
+
     // ── list / search ────────────────────────────────────────────
 
     @Test
