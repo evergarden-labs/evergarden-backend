@@ -1,5 +1,6 @@
 package com.evergarden.evergardenbackend.global.config;
 
+import com.evergarden.evergardenbackend.archive.websocket.ArchiveSubscriptionAuthInterceptor;
 import com.evergarden.evergardenbackend.global.security.StompAuthChannelInterceptor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
@@ -21,6 +22,7 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final StompAuthChannelInterceptor authChannelInterceptor;
+    private final ArchiveSubscriptionAuthInterceptor subscriptionAuthInterceptor;
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
@@ -35,6 +37,6 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void configureClientInboundChannel(ChannelRegistration registration) {
-        registration.interceptors(authChannelInterceptor);
+        registration.interceptors(authChannelInterceptor, subscriptionAuthInterceptor);
     }
 }
