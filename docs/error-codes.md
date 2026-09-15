@@ -121,7 +121,7 @@
 |---|---|---|---|
 | `FORBIDDEN` | 분류되지 않은 권한 거부 | COMMON-03 | **예비용.** 명세의 어느 오퍼레이션도 선언하지 않습니다 |
 | `NOT_RESOURCE_OWNER` | 남의 일정·아카이브·게시물·댓글·타임캡슐을 수정하거나 삭제 | COMMON-03 | |
-| `NOT_COLLABORATOR` | 공동 편집자가 아닌 사용자가 편집 시도 | ARCH-12 | |
+| `NOT_COLLABORATOR` | 초대받은 적 없거나 이미 나간 사용자가 수락·거절·나가기를 시도 | ARCH-11, ARCH-13, ARCH-18 | |
 | `COLLABORATION_CLOSED` | 종료된 공동 편집 아카이브를 **편집** 시도 | ARCH-14 | 조회는 통과 — ARCH-14 결과 칸에 명문화됨 |
 | `USER_BLOCKED` | 차단된 회원의 요청 | ADMIN-05, ADMIN-10 | `details.reason`, `details.blockedAt` |
 | `USER_WITHDRAWN` | 탈퇴 처리된 계정의 요청 | AUTH-04 | 유예 중이면 `details.restorableUntil` (ADR-054) |

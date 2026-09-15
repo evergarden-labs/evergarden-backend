@@ -2075,7 +2075,7 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '403':
           description: |
-            `NOT_RESOURCE_OWNER` · `NOT_COLLABORATOR` · `COLLABORATION_CLOSED`
+            `NOT_RESOURCE_OWNER` · `COLLABORATION_CLOSED`
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -2156,7 +2156,7 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '403':
           description: |
-            `NOT_RESOURCE_OWNER` · `NOT_COLLABORATOR` — 편집 권한 없음
+            `NOT_RESOURCE_OWNER` — 편집 권한 없음
             `COLLABORATION_CLOSED` — 공동 편집이 종료된 아카이브(ADR-017)
           content:
             application/json:
@@ -2206,7 +2206,7 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '403':
           description: |
-            `NOT_RESOURCE_OWNER` · `NOT_COLLABORATOR` · `COLLABORATION_CLOSED`
+            `NOT_RESOURCE_OWNER` · `COLLABORATION_CLOSED`
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -2255,7 +2255,7 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '403':
           description: |
-            `NOT_RESOURCE_OWNER` · `NOT_COLLABORATOR` · `COLLABORATION_CLOSED`
+            `NOT_RESOURCE_OWNER` · `COLLABORATION_CLOSED`
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -2287,7 +2287,7 @@ paths:
               schema: { $ref: '#/components/schemas/EmptySuccess' }
         '403':
           description: |
-            `NOT_RESOURCE_OWNER` · `NOT_COLLABORATOR` · `COLLABORATION_CLOSED`
+            `NOT_RESOURCE_OWNER` · `COLLABORATION_CLOSED`
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -2341,7 +2341,7 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '403':
           description: |
-            `NOT_RESOURCE_OWNER` · `NOT_COLLABORATOR` · `COLLABORATION_CLOSED`
+            `NOT_RESOURCE_OWNER` · `COLLABORATION_CLOSED`
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -2476,7 +2476,7 @@ paths:
                   meta: { type: 'null' }
         '403':
           description: |
-            `NOT_RESOURCE_OWNER` · `NOT_COLLABORATOR` — 이 아카이브에 참여한 적이 없음
+            `NOT_RESOURCE_OWNER` — 이 아카이브에 참여한 적이 없음
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -2759,7 +2759,7 @@ paths:
                   meta: { type: 'null' }
         '403':
           description: |
-            `NOT_RESOURCE_OWNER` · `NOT_COLLABORATOR` — 편집 권한 없음
+            `NOT_RESOURCE_OWNER` — 편집 권한 없음
             `COLLABORATION_CLOSED` — 종료된 공동 편집
           content:
             application/json:
