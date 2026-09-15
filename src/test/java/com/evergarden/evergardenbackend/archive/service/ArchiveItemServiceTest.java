@@ -48,10 +48,12 @@ class ArchiveItemServiceTest {
     private final ArchiveAccessGuard accessGuard = mock(ArchiveAccessGuard.class);
     private final ArchiveMapper archiveMapper =
             new ArchiveMapper(new MediaMapper(mock(MediaStorageService.class)));
+    private final org.springframework.context.ApplicationEventPublisher eventPublisher =
+            mock(org.springframework.context.ApplicationEventPublisher.class);
 
     private final ArchiveItemService service = new ArchiveItemService(
             archiveRepository, archiveItemRepository, collaboratorRepository,
-            mediaRepository, accessGuard, archiveMapper);
+            mediaRepository, accessGuard, archiveMapper, eventPublisher);
 
     private final AtomicLong nextId = new AtomicLong(1);
 
@@ -100,6 +102,13 @@ class ArchiveItemServiceTest {
         assertThat(result).hasSize(1);
         assertThat(result.get(0).sortOrder()).isEqualTo((short) 3);
         assertThat(result.get(0).layout()).isNotNull();
+
+        org.mockito.ArgumentCaptor<com.evergarden.evergardenbackend.archive.event.ArchiveRealtimeEvent> captor =
+                org.mockito.ArgumentCaptor.forClass(
+                        com.evergarden.evergardenbackend.archive.event.ArchiveRealtimeEvent.class);
+        org.mockito.Mockito.verify(eventPublisher).publishEvent(captor.capture());
+        assertThat(captor.getValue().type()).isEqualTo("item.added");
+        assertThat(captor.getValue().payload()).isEqualTo(result);
     }
 
     @Test

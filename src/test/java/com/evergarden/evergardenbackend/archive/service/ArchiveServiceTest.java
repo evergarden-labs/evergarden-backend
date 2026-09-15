@@ -34,6 +34,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -49,10 +50,11 @@ class ArchiveServiceTest {
     private final TripRepository tripRepository = mock(TripRepository.class);
     private final ArchiveAccessGuard accessGuard = mock(ArchiveAccessGuard.class);
     private final ArchiveMapper archiveMapper = mock(ArchiveMapper.class);
+    private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
 
     private final ArchiveService archiveService = new ArchiveService(
             archiveRepository, archiveItemRepository, collaboratorRepository,
-            userRepository, tripRepository, accessGuard, archiveMapper);
+            userRepository, tripRepository, accessGuard, archiveMapper, eventPublisher);
 
     @BeforeEach
     void setUp() {
@@ -167,6 +169,24 @@ class ArchiveServiceTest {
 
         verify(accessGuard).checkEditable(archive, USER_ID);
         assertThat(archive.getTitle()).isEqualTo("새 이름");
+    }
+
+    @Test
+    @DisplayName("수정하면 archive.updated 이벤트를 보낸 필드만 담아 발행한다")
+    void 수정_실시간_이벤트() {
+        Archive archive = archiveOwnedBy(USER_ID);
+        given(archiveRepository.findById(1L)).willReturn(Optional.of(archive));
+
+        archiveService.update(USER_ID, 1L, new ArchiveUpdateRequest("새 이름", null, null));
+
+        org.mockito.ArgumentCaptor<com.evergarden.evergardenbackend.archive.event.ArchiveRealtimeEvent> captor =
+                org.mockito.ArgumentCaptor.forClass(
+                        com.evergarden.evergardenbackend.archive.event.ArchiveRealtimeEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        var event = captor.getValue();
+        assertThat(event.type()).isEqualTo("archive.updated");
+        assertThat(event.archiveId()).isEqualTo(1L);
+        assertThat(event.payload()).isEqualTo(java.util.Map.of("title", "새 이름"));
     }
 
     // ── delete ───────────────────────────────────────────────────

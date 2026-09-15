@@ -41,10 +41,14 @@ class ArchiveCollaborationServiceTest {
     private final UserRepository userRepository = mock(UserRepository.class);
     private final ArchiveAccessGuard accessGuard = mock(ArchiveAccessGuard.class);
     private final ArchiveMapper archiveMapper = mock(ArchiveMapper.class);
+    private final com.evergarden.evergardenbackend.archive.websocket.ArchiveEditorRegistry editorRegistry =
+            mock(com.evergarden.evergardenbackend.archive.websocket.ArchiveEditorRegistry.class);
+    private final org.springframework.context.ApplicationEventPublisher eventPublisher =
+            mock(org.springframework.context.ApplicationEventPublisher.class);
 
     private final ArchiveCollaborationService service = new ArchiveCollaborationService(
             archiveRepository, archiveItemRepository, collaboratorRepository,
-            userRepository, accessGuard, archiveMapper);
+            userRepository, accessGuard, archiveMapper, editorRegistry, eventPublisher);
 
     private Archive archive;
     private User invitee;
@@ -266,5 +270,47 @@ class ArchiveCollaborationServiceTest {
 
         verify(accessGuard).checkOwnerAndEditable(archive, OWNER_ID);
         assertThat(archive.getCollaborationStatus()).isEqualTo(CollaborationStatus.CLOSED);
+    }
+
+    @Test
+    @DisplayName("종료하면 collaboration.closed 이벤트를 발행한다")
+    void 종료_실시간_이벤트() {
+        service.close(OWNER_ID, 10L);
+
+        org.mockito.ArgumentCaptor<com.evergarden.evergardenbackend.archive.event.ArchiveRealtimeEvent> captor =
+                org.mockito.ArgumentCaptor.forClass(
+                        com.evergarden.evergardenbackend.archive.event.ArchiveRealtimeEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        assertThat(captor.getValue().type()).isEqualTo("collaboration.closed");
+        assertThat(captor.getValue().payload()).isNull();
+    }
+
+    // ── getSession (ARCH-12) ─────────────────────────────────────
+
+    @Test
+    @DisplayName("편집 권한이 없으면 세션 발급도 거절된다")
+    void 세션_권한_위임() {
+        doThrow(new BusinessException(ErrorCode.COLLABORATION_CLOSED))
+                .when(accessGuard).checkEditable(archive, OWNER_ID);
+
+        assertThatThrownBy(() -> service.getSession(OWNER_ID, 10L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.COLLABORATION_CLOSED);
+    }
+
+    @Test
+    @DisplayName("접속 정보에는 지금 접속해 있는 참여자만 담긴다")
+    void 세션_활성편집자만_포함() {
+        ReflectionTestUtils.setField(service, "websocketUrl", "ws://test/ws");
+        ArchiveCollaborator joined = collaboratorWith(CollaboratorStatus.JOINED);
+        given(collaboratorRepository.findByArchive(archive)).willReturn(List.of(joined));
+        given(editorRegistry.activeUserIds(10L)).willReturn(List.of(INVITEE_ID));
+
+        var session = service.getSession(OWNER_ID, 10L);
+
+        assertThat(session.websocketUrl()).isEqualTo("ws://test/ws");
+        assertThat(session.topic()).isEqualTo("/topic/archives/10");
+        assertThat(session.activeEditors()).hasSize(1);
+        assertThat(session.activeEditors().get(0).userId()).isEqualTo(INVITEE_ID);
     }
 }

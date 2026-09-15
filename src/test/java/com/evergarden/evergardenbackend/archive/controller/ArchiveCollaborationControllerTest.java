@@ -5,11 +5,13 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.evergarden.evergardenbackend.archive.dto.ArchiveDetail;
+import com.evergarden.evergardenbackend.archive.dto.CollaborationSession;
 import com.evergarden.evergardenbackend.archive.dto.CollaboratorResponse;
 import com.evergarden.evergardenbackend.archive.service.ArchiveCollaborationService;
 import com.evergarden.evergardenbackend.global.exception.BusinessException;
@@ -110,6 +112,30 @@ class ArchiveCollaborationControllerTest {
         mvc.perform(delete("/archives/1/collaborators/me"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("세션 조회는 서비스가 돌려준 접속 정보를 그대로 내려준다")
+    void 정상_세션조회() throws Exception {
+        given(collaborationService.getSession(1L, 1L)).willReturn(
+                new CollaborationSession("ws://localhost:8080/ws", "/topic/archives/1", List.of()));
+
+        mvc.perform(get("/archives/1/collaboration/session"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.websocketUrl").value("ws://localhost:8080/ws"))
+                .andExpect(jsonPath("$.data.topic").value("/topic/archives/1"))
+                .andExpect(jsonPath("$.data.activeEditors").isArray());
+    }
+
+    @Test
+    @DisplayName("공동편집이 닫혀 있으면 세션 조회도 서비스 예외를 그대로 전달한다")
+    void 세션조회_닫힌_공동편집() throws Exception {
+        given(collaborationService.getSession(1L, 1L))
+                .willThrow(new BusinessException(ErrorCode.COLLABORATION_CLOSED));
+
+        mvc.perform(get("/archives/1/collaboration/session"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("COLLABORATION_CLOSED"));
     }
 
     @Test
