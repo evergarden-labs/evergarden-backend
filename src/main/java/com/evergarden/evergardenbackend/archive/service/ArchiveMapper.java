@@ -45,7 +45,7 @@ public class ArchiveMapper {
                 archive.getOriginArchive() != null ? archive.getOriginArchive().getId() : null);
     }
 
-    private ArchiveItemResponse toItemResponse(Archive archive, ArchiveItem item) {
+    public ArchiveItemResponse toItemResponse(Archive archive, ArchiveItem item) {
         boolean isCover = archive.getCoverItem() != null && archive.getCoverItem().getId().equals(item.getId());
         return new ArchiveItemResponse(item.getId(), mediaMapper.toResponse(item.getMedia()),
                 item.getSortOrder(), item.getLayout(), item.getCaption(), isCover);
