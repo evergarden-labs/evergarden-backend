@@ -1,0 +1,187 @@
+package com.evergarden.evergardenbackend.trip.controller;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.evergarden.evergardenbackend.global.config.SecurityConfig;
+import com.evergarden.evergardenbackend.global.exception.BusinessException;
+import com.evergarden.evergardenbackend.global.exception.ErrorCode;
+import com.evergarden.evergardenbackend.global.security.DevUserProvider;
+import com.evergarden.evergardenbackend.global.security.JwtAccessDeniedHandler;
+import com.evergarden.evergardenbackend.global.security.JwtAuthenticationEntryPoint;
+import com.evergarden.evergardenbackend.global.security.JwtAuthenticationFilter;
+import com.evergarden.evergardenbackend.global.security.JwtTokenProvider;
+import com.evergarden.evergardenbackend.global.security.Role;
+import com.evergarden.evergardenbackend.global.security.SecurityErrorResponder;
+import com.evergarden.evergardenbackend.trip.dto.TripDetail;
+import com.evergarden.evergardenbackend.trip.service.TripService;
+import com.evergarden.evergardenbackend.user.entity.User;
+import com.evergarden.evergardenbackend.user.repository.UserRepository;
+import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+
+/**
+ * `@Valid`·`@Min`/`@Max` 검증이 실제로 걸리는지 확인한다 — 아카이브 컨트롤러 테스트와
+ * 같은 이유로 {@code standaloneSetup}이 아니라 {@code @WebMvcTest}를 쓴다.
+ */
+@ActiveProfiles("test")
+@WebMvcTest(controllers = TripController.class)
+@Import({SecurityConfig.class, JwtAuthenticationFilter.class, JwtTokenProvider.class,
+        JwtAuthenticationEntryPoint.class, JwtAccessDeniedHandler.class, SecurityErrorResponder.class,
+        DevUserProvider.class, JacksonAutoConfiguration.class})
+class TripControllerTest {
+
+    @Autowired MockMvc mvc;
+    @Autowired JwtTokenProvider tokenProvider;
+    @MockitoBean UserRepository userRepository;
+    @MockitoBean TripService tripService;
+
+    String accessToken;
+
+    @BeforeEach
+    void setUp() {
+        User activeUser = User.builder().nickname("여행자").build();
+        given(userRepository.findById(any())).willReturn(Optional.of(activeUser));
+        accessToken = tokenProvider.issueAccessToken(1L, Role.USER);
+    }
+
+    // ── 목록: @Min/@Max ──────────────────────────────────────────
+
+    @Test
+    @DisplayName("page가 0이면 INVALID_REQUEST")
+    void page_0이면_거절() throws Exception {
+        mvc.perform(get("/trips?page=0").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    @DisplayName("size가 50을 넘으면 INVALID_REQUEST")
+    void size_초과면_거절() throws Exception {
+        mvc.perform(get("/trips?size=51").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    @DisplayName("기본값으로 정상 조회된다")
+    void 기본값_조회() throws Exception {
+        given(tripService.list(eq(1L), any())).willReturn(new PageImpl<>(java.util.List.of()));
+
+        mvc.perform(get("/trips").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isArray());
+    }
+
+    // ── 생성: @Valid ─────────────────────────────────────────────
+
+    @Test
+    @DisplayName("title이 비어 있으면 INVALID_REQUEST — 서비스를 부르지 않는다")
+    void 빈_제목() throws Exception {
+        mvc.perform(post("/trips")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":"","startDate":"2026-01-01","endDate":"2026-01-03","regionCodes":["50"]}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    @DisplayName("regionCodes가 비어 있으면 INVALID_REQUEST")
+    void 여행지_누락() throws Exception {
+        mvc.perform(post("/trips")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":"제주","startDate":"2026-01-01","endDate":"2026-01-03","regionCodes":[]}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    @DisplayName("정상 요청은 로그인한 사용자 ID로 서비스에 위임한다")
+    void 정상_생성() throws Exception {
+        given(tripService.create(eq(1L), any())).willReturn(mock(TripDetail.class));
+
+        mvc.perform(post("/trips")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":"제주도 여행","startDate":"2026-01-01","endDate":"2026-01-03","regionCodes":["50"]}
+                                """))
+                .andExpect(status().isOk());
+    }
+
+    // ── 조회·수정·삭제: 서비스 예외가 그대로 전달되는지 ──────────
+
+    @Test
+    @DisplayName("없는 일정 조회는 404 TRIP_NOT_FOUND")
+    void 없는_일정() throws Exception {
+        given(tripService.get(eq(1L), eq(999L)))
+                .willThrow(new BusinessException(ErrorCode.TRIP_NOT_FOUND));
+
+        mvc.perform(get("/trips/999").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("TRIP_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("소유자가 아니면 수정 시 403 NOT_RESOURCE_OWNER")
+    void 소유자가_아닌_수정() throws Exception {
+        given(tripService.update(eq(1L), eq(5L), any()))
+                .willThrow(new BusinessException(ErrorCode.NOT_RESOURCE_OWNER));
+
+        mvc.perform(patch("/trips/5")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":"새 이름"}
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("NOT_RESOURCE_OWNER"));
+    }
+
+    @Test
+    @DisplayName("빈 수정 본문은 INVALID_REQUEST가 그대로 전달된다")
+    void 빈_수정본문() throws Exception {
+        given(tripService.update(eq(1L), eq(5L), any()))
+                .willThrow(new BusinessException(ErrorCode.INVALID_REQUEST));
+
+        mvc.perform(patch("/trips/5")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    @DisplayName("삭제는 빈 성공 봉투를 돌려준다")
+    void 삭제_성공() throws Exception {
+        mvc.perform(delete("/trips/5").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").doesNotExist());
+    }
+}
