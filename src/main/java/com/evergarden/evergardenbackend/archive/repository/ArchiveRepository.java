@@ -3,6 +3,7 @@ package com.evergarden.evergardenbackend.archive.repository;
 import com.evergarden.evergardenbackend.archive.entity.Archive;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -11,6 +12,9 @@ import org.springframework.data.repository.query.Param;
 public interface ArchiveRepository extends JpaRepository<Archive, Long> {
 
     boolean existsByTrip_Id(Long tripId);
+
+    /** 일정에 연결된 아카이브(있으면). 플래너의 {@code linkedArchiveId}용(ADR-001). */
+    Optional<Archive> findByTrip_Id(Long tripId);
 
     /** 내가 만들었거나 참여(JOINED) 중인 아카이브. 커서는 id 기준(ADR-058). */
     @Query("""
