@@ -21,7 +21,11 @@ import com.evergarden.evergardenbackend.global.security.JwtAuthenticationFilter;
 import com.evergarden.evergardenbackend.global.security.JwtTokenProvider;
 import com.evergarden.evergardenbackend.global.security.Role;
 import com.evergarden.evergardenbackend.global.security.SecurityErrorResponder;
+import com.evergarden.evergardenbackend.trip.dto.AutoArrangeResult;
 import com.evergarden.evergardenbackend.trip.dto.TripDetail;
+import com.evergarden.evergardenbackend.trip.dto.TripRoute;
+import com.evergarden.evergardenbackend.trip.service.TripAutoArrangeService;
+import com.evergarden.evergardenbackend.trip.service.TripRouteService;
 import com.evergarden.evergardenbackend.trip.service.TripService;
 import com.evergarden.evergardenbackend.user.entity.User;
 import com.evergarden.evergardenbackend.user.repository.UserRepository;
@@ -54,6 +58,8 @@ class TripControllerTest {
     @Autowired JwtTokenProvider tokenProvider;
     @MockitoBean UserRepository userRepository;
     @MockitoBean TripService tripService;
+    @MockitoBean TripRouteService tripRouteService;
+    @MockitoBean TripAutoArrangeService tripAutoArrangeService;
 
     String accessToken;
 
@@ -183,5 +189,52 @@ class TripControllerTest {
         mvc.perform(delete("/trips/5").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").doesNotExist());
+    }
+
+    // ── 동선 조회 ─────────────────────────────────────────
+
+    @Test
+    @DisplayName("동선 조회는 로그인한 사용자 ID로 서비스에 위임한다")
+    void 동선_조회() throws Exception {
+        given(tripRouteService.getRoute(eq(1L), eq(5L))).willReturn(mock(TripRoute.class));
+
+        mvc.perform(get("/trips/5/route").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("없는 일정의 동선 조회는 404 TRIP_NOT_FOUND")
+    void 동선_없는일정() throws Exception {
+        given(tripRouteService.getRoute(eq(1L), eq(999L)))
+                .willThrow(new BusinessException(ErrorCode.TRIP_NOT_FOUND));
+
+        mvc.perform(get("/trips/999/route").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("TRIP_NOT_FOUND"));
+    }
+
+    // ── 자동 배치 ─────────────────────────────────────────
+
+    @Test
+    @DisplayName("본문 없이 호출해도 로그인한 사용자 ID로 서비스에 위임한다")
+    void 자동배치_본문없음() throws Exception {
+        given(tripAutoArrangeService.propose(eq(1L), eq(5L), eq(null))).willReturn(mock(AutoArrangeResult.class));
+
+        mvc.perform(post("/trips/5/auto-arrange").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("배치할 장소가 없으면 400 INVALID_REQUEST가 그대로 전달된다")
+    void 자동배치_장소없음() throws Exception {
+        given(tripAutoArrangeService.propose(eq(1L), eq(5L), any()))
+                .willThrow(new BusinessException(ErrorCode.INVALID_REQUEST));
+
+        mvc.perform(post("/trips/5/auto-arrange")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
     }
 }
