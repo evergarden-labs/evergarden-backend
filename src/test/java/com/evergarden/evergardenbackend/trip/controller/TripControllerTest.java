@@ -21,10 +21,12 @@ import com.evergarden.evergardenbackend.global.security.JwtAuthenticationFilter;
 import com.evergarden.evergardenbackend.global.security.JwtTokenProvider;
 import com.evergarden.evergardenbackend.global.security.Role;
 import com.evergarden.evergardenbackend.global.security.SecurityErrorResponder;
+import com.evergarden.evergardenbackend.place.dto.PlaceSummary;
 import com.evergarden.evergardenbackend.trip.dto.AutoArrangeResult;
 import com.evergarden.evergardenbackend.trip.dto.TripDetail;
 import com.evergarden.evergardenbackend.trip.dto.TripRoute;
 import com.evergarden.evergardenbackend.trip.service.TripAutoArrangeService;
+import com.evergarden.evergardenbackend.trip.service.TripNearbyPlaceService;
 import com.evergarden.evergardenbackend.trip.service.TripRouteService;
 import com.evergarden.evergardenbackend.trip.service.TripService;
 import com.evergarden.evergardenbackend.user.entity.User;
@@ -60,6 +62,7 @@ class TripControllerTest {
     @MockitoBean TripService tripService;
     @MockitoBean TripRouteService tripRouteService;
     @MockitoBean TripAutoArrangeService tripAutoArrangeService;
+    @MockitoBean TripNearbyPlaceService tripNearbyPlaceService;
 
     String accessToken;
 
@@ -236,5 +239,37 @@ class TripControllerTest {
                         .content("{}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+    }
+
+    // ── 주변 추천 장소 ────────────────────────────────────
+
+    @Test
+    @DisplayName("dayNumber 없이 호출해도 로그인한 사용자 ID로 서비스에 위임한다")
+    void 주변장소_dayNumber없이() throws Exception {
+        given(tripNearbyPlaceService.listNearby(eq(1L), eq(5L), eq(null), any()))
+                .willReturn(new PageImpl<>(java.util.List.<PlaceSummary>of()));
+
+        mvc.perform(get("/trips/5/nearby-places").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isArray());
+    }
+
+    @Test
+    @DisplayName("dayNumber가 0이면 INVALID_REQUEST")
+    void 주변장소_dayNumber_0() throws Exception {
+        mvc.perform(get("/trips/5/nearby-places?dayNumber=0").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    @DisplayName("소유자가 아니면 403 NOT_RESOURCE_OWNER가 그대로 전달된다")
+    void 주변장소_소유자아님() throws Exception {
+        given(tripNearbyPlaceService.listNearby(eq(1L), eq(5L), any(), any()))
+                .willThrow(new BusinessException(ErrorCode.NOT_RESOURCE_OWNER));
+
+        mvc.perform(get("/trips/5/nearby-places").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("NOT_RESOURCE_OWNER"));
     }
 }
