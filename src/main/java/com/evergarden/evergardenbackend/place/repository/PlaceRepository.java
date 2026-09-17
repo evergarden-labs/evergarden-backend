@@ -1,8 +1,11 @@
 package com.evergarden.evergardenbackend.place.repository;
 
 import com.evergarden.evergardenbackend.place.entity.Place;
+import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface PlaceRepository extends JpaRepository<Place, Long> {
+
+    Optional<Place> findByContentId(String contentId);
 }
