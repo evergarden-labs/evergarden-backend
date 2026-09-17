@@ -169,7 +169,8 @@ public class TripService {
         return tripMapper.toSummary(trip, regions, tripPlaces, linkedArchiveId(trip));
     }
 
-    private TripDetail toDetail(Trip trip) {
+    /** 패키지 안의 다른 서비스(장소 담기 등)도 상세 조립을 재사용할 수 있게 접근 제한자를 안 붙인다. */
+    TripDetail toDetail(Trip trip) {
         List<Region> regions = regions(trip);
         List<TripPlace> tripPlaces = tripPlaceRepository.findByTripOrderByDayNumberAscSortOrderAsc(trip);
         return tripMapper.toDetail(trip, regions, tripPlaces, linkedArchiveId(trip));
