@@ -3,6 +3,7 @@ package com.evergarden.evergardenbackend.trip.controller;
 import com.evergarden.evergardenbackend.global.response.ApiResponse;
 import com.evergarden.evergardenbackend.global.response.PageMeta;
 import com.evergarden.evergardenbackend.global.security.AuthPrincipal;
+import com.evergarden.evergardenbackend.place.dto.PlaceSummary;
 import com.evergarden.evergardenbackend.trip.dto.AutoArrangeRequest;
 import com.evergarden.evergardenbackend.trip.dto.AutoArrangeResult;
 import com.evergarden.evergardenbackend.trip.dto.TripCreateRequest;
@@ -11,6 +12,7 @@ import com.evergarden.evergardenbackend.trip.dto.TripRoute;
 import com.evergarden.evergardenbackend.trip.dto.TripSummary;
 import com.evergarden.evergardenbackend.trip.dto.TripUpdateRequest;
 import com.evergarden.evergardenbackend.trip.service.TripAutoArrangeService;
+import com.evergarden.evergardenbackend.trip.service.TripNearbyPlaceService;
 import com.evergarden.evergardenbackend.trip.service.TripRouteService;
 import com.evergarden.evergardenbackend.trip.service.TripService;
 import jakarta.validation.Valid;
@@ -32,7 +34,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/** PLAN-01·03·04·05·09·10·11. 명세: {@code evergardenapi.yaml}의 {@code /trips}. */
+/** PLAN-01·03·04·05·08·09·10·11. 명세: {@code evergardenapi.yaml}의 {@code /trips}. */
 @RestController
 @RequestMapping("/trips")
 @RequiredArgsConstructor
@@ -42,6 +44,7 @@ public class TripController {
     private final TripService tripService;
     private final TripRouteService tripRouteService;
     private final TripAutoArrangeService tripAutoArrangeService;
+    private final TripNearbyPlaceService tripNearbyPlaceService;
 
     @PostMapping
     public ApiResponse<TripDetail> create(
@@ -95,5 +98,17 @@ public class TripController {
             @PathVariable Long tripId,
             @RequestBody(required = false) AutoArrangeRequest request) {
         return ApiResponse.of(tripAutoArrangeService.propose(me.userId(), tripId, request));
+    }
+
+    @GetMapping("/{tripId}/nearby-places")
+    public ApiResponse<List<PlaceSummary>> nearbyPlaces(
+            @AuthenticationPrincipal AuthPrincipal me,
+            @PathVariable Long tripId,
+            @RequestParam(required = false) @Min(1) Short dayNumber,
+            @RequestParam(defaultValue = "1") @Min(1) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
+        Page<PlaceSummary> result = tripNearbyPlaceService.listNearby(
+                me.userId(), tripId, dayNumber, PageRequest.of(page - 1, size));
+        return ApiResponse.of(result.getContent(), PageMeta.from(result));
     }
 }
