@@ -48,7 +48,8 @@ public class Place extends BaseTimeEntity {
     @Column(length = 300)
     private String addr;
 
-    @Column(length = 50)
+    /** TourAPI 원문 그대로. 대표번호·예약번호 병기 같은 자유 텍스트라 길이를 예측할 수 없다 */
+    @Column(columnDefinition = "text")
     private String tel;
 
     @Column(nullable = false, precision = 10, scale = 7)
