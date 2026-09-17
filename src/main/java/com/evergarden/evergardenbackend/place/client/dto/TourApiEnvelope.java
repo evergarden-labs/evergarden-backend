@@ -27,4 +27,8 @@ public record TourApiEnvelope<T>(Response<T> response) {
         Items<T> items = response.body().items();
         return items == null || items.item() == null ? List.of() : items.item();
     }
+
+    public int totalCount() {
+        return response.body().totalCount();
+    }
 }
