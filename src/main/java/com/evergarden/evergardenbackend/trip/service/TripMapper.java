@@ -67,7 +67,8 @@ public class TripMapper {
         return days;
     }
 
-    private TripPlaceResponse toPlaceResponse(TripPlace tripPlace) {
+    /** {@code TripPlaceService}가 단건 응답(추가·수정)에도 그대로 재사용한다. */
+    public TripPlaceResponse toPlaceResponse(TripPlace tripPlace) {
         return new TripPlaceResponse(
                 tripPlace.getId(),
                 PlaceSummary.of(tripPlace.getPlace()),
