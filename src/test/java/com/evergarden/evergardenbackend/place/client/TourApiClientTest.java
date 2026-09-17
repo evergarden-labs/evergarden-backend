@@ -6,6 +6,7 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
+import com.evergarden.evergardenbackend.place.client.dto.AreaBasedPage;
 import com.evergarden.evergardenbackend.place.client.dto.RegionCode;
 import com.evergarden.evergardenbackend.place.config.TourApiProperties;
 import java.util.List;
@@ -13,8 +14,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
+import org.springframework.http.converter.json.JacksonJsonHttpMessageConverter;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
+import tools.jackson.databind.cfg.CoercionAction;
+import tools.jackson.databind.cfg.CoercionInputShape;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.type.LogicalType;
 
 /** 법정동코드 조회({@code ldongCode2}) — 실제 HTTP 호출은 목 서버로 대체한다. */
 class TourApiClientTest {
@@ -69,5 +75,35 @@ class TourApiClientTest {
         assertThat(districts).containsExactly(
                 new RegionCode("110", "종로구"),
                 new RegionCode("140", "중구"));
+    }
+
+    /**
+     * TourAPI는 결과가 없으면 {@code items}가 객체가 아니라 빈 문자열로 온다 — 실전에서
+     * {@code areaBasedList2}로 결과 없는 지역·타입 조합을 부를 때 크래시로 확인된 문제라
+     * {@code ExternalApiConfig}와 똑같이 코덱을 관용도 있게 설정해 회귀를 잠근다.
+     */
+    @Test
+    @DisplayName("결과가 없으면 items가 빈 문자열로 와도 빈 목록으로 처리한다")
+    void 결과없으면_빈문자열_items도_처리() {
+        JsonMapper tourApiJsonMapper = JsonMapper.builder()
+                .withCoercionConfig(LogicalType.POJO,
+                        cfg -> cfg.setCoercion(CoercionInputShape.EmptyString, CoercionAction.AsNull))
+                .build();
+        RestClient.Builder builder = RestClient.builder().baseUrl(BASE_URL)
+                .configureMessageConverters(converters ->
+                        converters.withJsonConverter(new JacksonJsonHttpMessageConverter(tourApiJsonMapper)));
+        MockRestServiceServer lenientMockServer = MockRestServiceServer.bindTo(builder).build();
+        TourApiClient lenientClient = new TourApiClient(builder.build(), new TourApiProperties(BASE_URL, "test-service-key"));
+
+        lenientMockServer.expect(requestTo(containsString("/areaBasedList2")))
+                .andRespond(withSuccess("""
+                        {"response":{"header":{"resultCode":"0000","resultMsg":"OK"},
+                        "body":{"items":"","numOfRows":0,"pageNo":1,"totalCount":0}}}
+                        """, MediaType.APPLICATION_JSON));
+
+        AreaBasedPage page = lenientClient.fetchPlaces("11", "25", 1, 100);
+
+        assertThat(page.items()).isEmpty();
+        assertThat(page.totalCount()).isZero();
     }
 }
