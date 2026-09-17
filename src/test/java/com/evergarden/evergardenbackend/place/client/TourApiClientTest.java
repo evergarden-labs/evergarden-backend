@@ -7,6 +7,7 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 import com.evergarden.evergardenbackend.place.client.dto.AreaBasedPage;
+import com.evergarden.evergardenbackend.place.client.dto.AreaBasedSyncPage;
 import com.evergarden.evergardenbackend.place.client.dto.RegionCode;
 import com.evergarden.evergardenbackend.place.config.TourApiProperties;
 import java.util.List;
@@ -75,6 +76,27 @@ class TourApiClientTest {
         assertThat(districts).containsExactly(
                 new RegionCode("110", "종로구"),
                 new RegionCode("140", "중구"));
+    }
+
+    @Test
+    @DisplayName("증분 동기화는 지역·타입 없이 modifiedtime만으로 전국을 한 번에 부른다")
+    void 증분동기화_전국조회() {
+        mockServer.expect(requestTo(containsString("/areaBasedSyncList2")))
+                .andExpect(queryParam("modifiedtime", "20260917"))
+                .andRespond(withSuccess("""
+                        {"response":{"header":{"resultCode":"0000","resultMsg":"OK"},
+                        "body":{"items":{"item":[
+                            {"contentid":"c1","contenttypeid":"12","title":"테스트 장소","addr1":"주소",
+                             "tel":"","mapx":"126.97","mapy":"37.57","firstimage2":"",
+                             "lDongRegnCd":"11","lDongSignguCd":"110","showflag":"1"}
+                        ]},"numOfRows":1,"pageNo":1,"totalCount":1}}}
+                        """, MediaType.APPLICATION_JSON));
+
+        AreaBasedSyncPage page = client.fetchSyncedPlaces("20260917", 1, 100);
+
+        assertThat(page.items()).hasSize(1);
+        assertThat(page.items().get(0).contentid()).isEqualTo("c1");
+        assertThat(page.items().get(0).isVisible()).isTrue();
     }
 
     /**
