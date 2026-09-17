@@ -3,10 +3,15 @@ package com.evergarden.evergardenbackend.trip.controller;
 import com.evergarden.evergardenbackend.global.response.ApiResponse;
 import com.evergarden.evergardenbackend.global.response.PageMeta;
 import com.evergarden.evergardenbackend.global.security.AuthPrincipal;
+import com.evergarden.evergardenbackend.trip.dto.AutoArrangeRequest;
+import com.evergarden.evergardenbackend.trip.dto.AutoArrangeResult;
 import com.evergarden.evergardenbackend.trip.dto.TripCreateRequest;
 import com.evergarden.evergardenbackend.trip.dto.TripDetail;
+import com.evergarden.evergardenbackend.trip.dto.TripRoute;
 import com.evergarden.evergardenbackend.trip.dto.TripSummary;
 import com.evergarden.evergardenbackend.trip.dto.TripUpdateRequest;
+import com.evergarden.evergardenbackend.trip.service.TripAutoArrangeService;
+import com.evergarden.evergardenbackend.trip.service.TripRouteService;
 import com.evergarden.evergardenbackend.trip.service.TripService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -27,7 +32,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/** PLAN-01·03·04·05·11. 명세: {@code evergardenapi.yaml}의 {@code /trips}. */
+/** PLAN-01·03·04·05·09·10·11. 명세: {@code evergardenapi.yaml}의 {@code /trips}. */
 @RestController
 @RequestMapping("/trips")
 @RequiredArgsConstructor
@@ -35,6 +40,8 @@ import org.springframework.web.bind.annotation.RestController;
 public class TripController {
 
     private final TripService tripService;
+    private final TripRouteService tripRouteService;
+    private final TripAutoArrangeService tripAutoArrangeService;
 
     @PostMapping
     public ApiResponse<TripDetail> create(
@@ -73,5 +80,20 @@ public class TripController {
             @PathVariable Long tripId) {
         tripService.delete(me.userId(), tripId);
         return ApiResponse.empty();
+    }
+
+    @GetMapping("/{tripId}/route")
+    public ApiResponse<TripRoute> route(
+            @AuthenticationPrincipal AuthPrincipal me,
+            @PathVariable Long tripId) {
+        return ApiResponse.of(tripRouteService.getRoute(me.userId(), tripId));
+    }
+
+    @PostMapping("/{tripId}/auto-arrange")
+    public ApiResponse<AutoArrangeResult> autoArrange(
+            @AuthenticationPrincipal AuthPrincipal me,
+            @PathVariable Long tripId,
+            @RequestBody(required = false) AutoArrangeRequest request) {
+        return ApiResponse.of(tripAutoArrangeService.propose(me.userId(), tripId, request));
     }
 }
