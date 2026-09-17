@@ -64,9 +64,9 @@ public class PlaceSyncService {
                 while (true) {
                     AreaBasedPage result = tourApiClient.fetchPlaces(province.getCode(), contentTypeId, page, PAGE_SIZE);
                     for (AreaBasedItem item : result.items()) {
-                        Region region = resolveRegion(item, regionsByCode);
-                        BigDecimal lat = parseCoordinate(item.mapy());
-                        BigDecimal lng = parseCoordinate(item.mapx());
+                        Region region = PlaceSyncSupport.resolveRegion(item.lDongRegnCd(), item.lDongSignguCd(), regionsByCode);
+                        BigDecimal lat = PlaceSyncSupport.parseCoordinate(item.mapy());
+                        BigDecimal lng = PlaceSyncSupport.parseCoordinate(item.mapx());
                         if (region == null || lat == null || lng == null) {
                             skipped.add(item.contentid());
                             continue;
@@ -92,30 +92,4 @@ public class PlaceSyncService {
         return new PlaceSyncResult(created, updated, skipped);
     }
 
-    /** 시군구 코드가 있으면 시/도+시군구로, 없으면 시/도 코드로 찾는다(ADR: 지역 코드 전국유일화). */
-    private Region resolveRegion(AreaBasedItem item, Map<String, Region> regionsByCode) {
-        String signguCd = item.lDongSignguCd();
-        String regnCd = item.lDongRegnCd();
-        if (regnCd == null || regnCd.isBlank()) {
-            return null;
-        }
-        if (signguCd != null && !signguCd.isBlank()) {
-            Region region = regionsByCode.get(regnCd + signguCd);
-            if (region != null) {
-                return region;
-            }
-        }
-        return regionsByCode.get(regnCd);
-    }
-
-    private BigDecimal parseCoordinate(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        try {
-            return new BigDecimal(value);
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
 }
