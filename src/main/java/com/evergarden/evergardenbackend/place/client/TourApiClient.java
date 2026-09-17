@@ -2,8 +2,10 @@ package com.evergarden.evergardenbackend.place.client;
 
 import com.evergarden.evergardenbackend.place.client.dto.AreaBasedItem;
 import com.evergarden.evergardenbackend.place.client.dto.AreaBasedPage;
+import com.evergarden.evergardenbackend.place.client.dto.AreaBasedSyncPage;
 import com.evergarden.evergardenbackend.place.client.dto.LdongDistrictItem;
 import com.evergarden.evergardenbackend.place.client.dto.RegionCode;
+import com.evergarden.evergardenbackend.place.client.dto.SyncAreaBasedItem;
 import com.evergarden.evergardenbackend.place.client.dto.TourApiEnvelope;
 import com.evergarden.evergardenbackend.place.config.TourApiProperties;
 import java.net.URI;
@@ -33,6 +35,7 @@ public class TourApiClient {
 
     private static final String LDONG_CODE_PATH = "/ldongCode2";
     private static final String AREA_BASED_LIST_PATH = "/areaBasedList2";
+    private static final String AREA_BASED_SYNC_LIST_PATH = "/areaBasedSyncList2";
     private static final String MOBILE_OS = "ETC";
     private static final String MOBILE_APP = "evergarden";
     private static final int MAX_ROWS = 100;
@@ -91,6 +94,28 @@ public class TourApiClient {
         return envelope == null
                 ? new AreaBasedPage(List.of(), 0)
                 : new AreaBasedPage(envelope.items(), envelope.totalCount());
+    }
+
+    /**
+     * 관광정보 동기화 목록 조회({@code areaBasedSyncList2}, {@code docs/place-data-sync.md} 2.3절).
+     * 지역·타입으로 좁히지 않고 전국·전체 타입을 한 번에 받는다 — 초기 시딩과 달리
+     * 하루치 변경분은 양이 적어 시/도별로 나눠 부를 필요가 없다.
+     */
+    public AreaBasedSyncPage fetchSyncedPlaces(String modifiedTime, int pageNo, int numOfRows) {
+        String query = commonQuery(numOfRows)
+                + "&pageNo=" + pageNo
+                + "&modifiedtime=" + modifiedTime
+                + "&arrange=C";
+        URI uri = URI.create(tourApiProperties.baseUrl() + AREA_BASED_SYNC_LIST_PATH + "?" + query);
+
+        TourApiEnvelope<SyncAreaBasedItem> envelope = tourApiRestClient.get()
+                .uri(uri)
+                .retrieve()
+                .body(new ParameterizedTypeReference<TourApiEnvelope<SyncAreaBasedItem>>() {
+                });
+        return envelope == null
+                ? new AreaBasedSyncPage(List.of(), 0)
+                : new AreaBasedSyncPage(envelope.items(), envelope.totalCount());
     }
 
     private String commonQuery(int numOfRows) {
