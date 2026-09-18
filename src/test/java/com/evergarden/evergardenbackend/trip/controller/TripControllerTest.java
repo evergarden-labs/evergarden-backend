@@ -241,6 +241,57 @@ class TripControllerTest {
                 .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
     }
 
+    // ── 자동 배치 적용(ADR-060) ────────────────────────────
+
+    @Test
+    @DisplayName("빈 items는 INVALID_REQUEST — 서비스를 부르지 않는다")
+    void 자동배치적용_빈목록() throws Exception {
+        mvc.perform(post("/trips/5/auto-arrange/apply")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"items":[]}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    @DisplayName("tripPlaceId가 있는 항목과 없는 항목이 섞인 요청을 그대로 위임한다")
+    void 자동배치적용_정상() throws Exception {
+        given(tripAutoArrangeService.apply(eq(1L), eq(5L), any())).willReturn(mock(TripDetail.class));
+
+        mvc.perform(post("/trips/5/auto-arrange/apply")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"items":[
+                                    {"tripPlaceId":101,"dayNumber":1,"sortOrder":1,
+                                     "place":{"placeId":1,"title":"남산","lat":37.5,"lng":127.0,"region":{"code":"11","name":"서울","level":"SIDO"}}},
+                                    {"tripPlaceId":null,"dayNumber":1,"sortOrder":2,
+                                     "place":{"placeId":2,"title":"덕수궁","lat":37.6,"lng":127.0,"region":{"code":"11","name":"서울","level":"SIDO"}}}
+                                ]}
+                                """))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("없는 일정이면 404 TRIP_NOT_FOUND")
+    void 자동배치적용_없는일정() throws Exception {
+        given(tripAutoArrangeService.apply(eq(1L), eq(999L), any()))
+                .willThrow(new BusinessException(ErrorCode.TRIP_NOT_FOUND));
+
+        mvc.perform(post("/trips/999/auto-arrange/apply")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"items":[{"tripPlaceId":1,"dayNumber":1,"sortOrder":1,
+                                    "place":{"placeId":1,"title":"남산","lat":37.5,"lng":127.0,"region":{"code":"11","name":"서울","level":"SIDO"}}}]}
+                                """))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("TRIP_NOT_FOUND"));
+    }
+
     // ── 주변 추천 장소 ────────────────────────────────────
 
     @Test
