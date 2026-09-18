@@ -36,7 +36,9 @@ class PlaceQueryServiceTest {
 
     private final PlaceRepository placeRepository = mock(PlaceRepository.class);
     private final RegionRepository regionRepository = mock(RegionRepository.class);
-    private final PlaceQueryService service = new PlaceQueryService(placeRepository, regionRepository);
+    private final PlaceDetailFetchService placeDetailFetchService = mock(PlaceDetailFetchService.class);
+    private final PlaceQueryService service =
+            new PlaceQueryService(placeRepository, regionRepository, placeDetailFetchService);
 
     private final Pageable pageable = PageRequest.of(0, 20);
 
@@ -138,14 +140,16 @@ class PlaceQueryServiceTest {
     }
 
     @Test
-    @DisplayName("상세 조회는 라이브 상세 필드가 비어 있어도 나머지를 그대로 돌려준다")
+    @DisplayName("상세 조회는 상세 정보 채우기를 위임하고, 채워진 값을 그대로 돌려준다")
     void 상세_정상() {
         Place place = place(1L, region("11", RegionLevel.SIDO, null));
         given(placeRepository.findById(1L)).willReturn(Optional.of(place));
 
         PlaceDetail detail = service.getPlace(1L);
 
+        verify(placeDetailFetchService).ensureDetailFetched(place);
         assertThat(detail.placeId()).isEqualTo(1L);
+        // ensureDetailFetched를 모킹해서 실제로 안 채워지므로 비어 있는 게 맞다
         assertThat(detail.overview()).isNull();
         assertThat(detail.imageUrls()).isEmpty();
     }

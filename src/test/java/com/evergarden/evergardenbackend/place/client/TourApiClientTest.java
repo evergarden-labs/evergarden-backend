@@ -2,15 +2,20 @@ package com.evergarden.evergardenbackend.place.client;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.queryParam;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 import com.evergarden.evergardenbackend.place.client.dto.AreaBasedPage;
 import com.evergarden.evergardenbackend.place.client.dto.AreaBasedSyncPage;
+import com.evergarden.evergardenbackend.place.client.dto.DetailCommonItem;
+import com.evergarden.evergardenbackend.place.client.dto.DetailImageItem;
+import com.evergarden.evergardenbackend.place.client.dto.DetailIntroItem;
 import com.evergarden.evergardenbackend.place.client.dto.RegionCode;
 import com.evergarden.evergardenbackend.place.config.TourApiProperties;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -97,6 +102,64 @@ class TourApiClientTest {
         assertThat(page.items()).hasSize(1);
         assertThat(page.items().get(0).contentid()).isEqualTo("c1");
         assertThat(page.items().get(0).isVisible()).isTrue();
+    }
+
+    @Test
+    @DisplayName("공통정보조회는 contentId만 보낸다 — contentTypeId를 넣으면 거부됨(실전 확인)")
+    void 공통정보조회_contentId만() {
+        mockServer.expect(requestTo(containsString("/detailCommon2")))
+                .andExpect(queryParam("contentId", "12345"))
+                .andExpect(requestTo(not(containsString("contentTypeId"))))
+                .andRespond(withSuccess("""
+                        {"response":{"header":{"resultCode":"0000","resultMsg":"OK"},
+                        "body":{"items":{"item":[
+                            {"contentid":"12345","overview":"멋진 관광지입니다"}
+                        ]},"numOfRows":1,"pageNo":1,"totalCount":1}}}
+                        """, MediaType.APPLICATION_JSON));
+
+        Optional<DetailCommonItem> result = client.fetchDetailCommon("12345");
+
+        assertThat(result).isPresent();
+        assertThat(result.get().overview()).isEqualTo("멋진 관광지입니다");
+    }
+
+    @Test
+    @DisplayName("소개정보조회는 contentId와 contentTypeId를 같이 보낸다")
+    void 소개정보조회_둘다보냄() {
+        mockServer.expect(requestTo(containsString("/detailIntro2")))
+                .andExpect(queryParam("contentId", "12345"))
+                .andExpect(queryParam("contentTypeId", "12"))
+                .andRespond(withSuccess("""
+                        {"response":{"header":{"resultCode":"0000","resultMsg":"OK"},
+                        "body":{"items":{"item":[
+                            {"contentid":"12345","usetime":"09:00~18:00","restdate":"매주 월요일"}
+                        ]},"numOfRows":1,"pageNo":1,"totalCount":1}}}
+                        """, MediaType.APPLICATION_JSON));
+
+        Optional<DetailIntroItem> result = client.fetchDetailIntro("12345", "12");
+
+        assertThat(result).isPresent();
+        assertThat(result.get().resolveUseTime()).isEqualTo("09:00~18:00");
+        assertThat(result.get().resolveRestDate()).isEqualTo("매주 월요일");
+    }
+
+    @Test
+    @DisplayName("관광사진정보조회는 사진 목록을 그대로 돌려준다")
+    void 관광사진정보조회() {
+        mockServer.expect(requestTo(containsString("/detailImage2")))
+                .andExpect(queryParam("contentId", "12345"))
+                .andRespond(withSuccess("""
+                        {"response":{"header":{"resultCode":"0000","resultMsg":"OK"},
+                        "body":{"items":{"item":[
+                            {"contentid":"12345","originimgurl":"http://example.com/1.jpg"},
+                            {"contentid":"12345","originimgurl":"http://example.com/2.jpg"}
+                        ]},"numOfRows":2,"pageNo":1,"totalCount":2}}}
+                        """, MediaType.APPLICATION_JSON));
+
+        List<DetailImageItem> images = client.fetchDetailImages("12345");
+
+        assertThat(images).extracting(DetailImageItem::originimgurl)
+                .containsExactly("http://example.com/1.jpg", "http://example.com/2.jpg");
     }
 
     /**
