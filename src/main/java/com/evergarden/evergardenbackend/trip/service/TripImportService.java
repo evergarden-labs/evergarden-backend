@@ -24,9 +24,9 @@ import org.springframework.transaction.annotation.Transactional;
  * 원본을 남기고(ADR-005), 이후 원본이 바뀌거나 지워져도 복사본은 영향받지 않는다 —
  * 참조가 아니라 값을 그대로 복제하기 때문이다.
  *
- * <p>명세는 {@code startDate} 생략 시 "기간 없는 초안"을 허용하지만, 그 상태를 표현할
- * 데이터 구조가 아직 없어(docs/decisions.md의 "importSharedCourse" 항목 참고) 지금은
- * 필수로 다룬다.
+ * <p>{@code startDate}는 생략할 수 없다(ADR-059) — "날짜 없는 초안" 상태를 표현할 데이터
+ * 구조가 없어서다. {@code ImportCourseRequest}의 {@code @NotNull}과 컨트롤러의
+ * {@code @Valid}가 이미 걸러내므로 여기서는 다시 확인하지 않는다.
  */
 @Service
 @RequiredArgsConstructor
@@ -48,9 +48,6 @@ public class TripImportService {
         Trip original = post.getSharedTrip();
         if (original == null) {
             throw new BusinessException(ErrorCode.TRIP_NOT_FOUND);
-        }
-        if (request == null || request.startDate() == null) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST);
         }
 
         LocalDate startDate = request.startDate();

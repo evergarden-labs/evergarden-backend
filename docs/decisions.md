@@ -1,6 +1,6 @@
 # 결정 기록 (ADR)
 
-> 최종 수정 2026-09-18 · 근거 문서 4종 중 하나
+> 최종 수정 2026-09-19 · 근거 문서 4종 중 하나
 >
 > 이 문서는 **"왜 이렇게 정했는가"**를 남기는 곳입니다.
 > 스키마나 명세만 봐서는 이유를 알 수 없는 결정들을 모았습니다.
@@ -662,7 +662,9 @@ ARCH-02의 수행 작업이 "이름, 테마, 대표 색상을 변경한다"라 �
 ### ADR-048 · 가져온 코스는 새 시작일부터 일차를 다시 매긴다
 
 `POST /posts/{postId}/course/import`에 `startDate`를 받아 원본의 여행 일수만큼 다시 잡습니다.
-생략하면 기간 없는 초안으로 들어옵니다.
+
+~~생략하면 기간 없는 초안으로 들어옵니다.~~ → **뒤집힘.** ADR-059에서 `startDate`를
+필수로 바꿨습니다.
 
 **이유** — 원본 날짜를 그대로 복사하면 **가져오자마자 지난 여행으로 분류됩니다.**
 남의 코스를 가져오는 이유는 앞으로 갈 여행에 쓰려는 것입니다.
@@ -923,6 +925,28 @@ ADR-011이 "커서 방식을 쓴다"까지만 정하고 토큰 안에 뭘 담을
 
 ---
 
+### ADR-059 · `importSharedCourse`의 `startDate`는 생략할 수 없다 (ADR-048 뒤집힘)
+
+`POST /posts/{postId}/course/import`의 `startDate`를 필수로 바꿉니다. 생략하면
+`INVALID_REQUEST`입니다. ADR-048이 정했던 "생략하면 기간 없는 초안" 동작은 뒤집습니다.
+
+**이유** — "날짜 없는 일정"이라는 상태 자체가 지금 구조 어디에도 없습니다.
+`trips.start_date`/`end_date`가 DB에 `NOT NULL`이고, `Trip` 엔티티도 `nullable = false`이고,
+`TripSummary`·`TripDetail`의 날짜 필드도 명세에서 다른 진짜 nullable 필드(`thumbnailUrl` 등)와
+달리 `null`을 허용하지 않고, `TripStatus`도 `[UPCOMING, ONGOING, PAST]` 세 값뿐이라 "아직
+날짜 없음"을 표현할 값이 없습니다. 이 상태를 실제로 만들려면 DB 마이그레이션·엔티티·명세
+(`TripStatus` 새 값, 날짜 필드 nullable화)·`durationDays()`와 목록 정렬·`days` 배열 조립
+로직까지 Trip 도메인 전체를 고쳐야 해서, 들이는 비용이 "가져올 때 날짜를 나중에 정해도
+된다"는 편의보다 큽니다.
+
+**대가** — 코스를 가져오는 시점에 여행 시작일을 반드시 같이 정해야 합니다. 나중으로
+미루고 싶으면 임시 날짜를 넣고 `PATCH /trips/{tripId}`로 나중에 바꾸는 수밖에 없습니다.
+
+**영향** — PLAN-12 / `evergardenapi.yaml`의 `importSharedCourse` 요청 본문(`startDate`
+필수, `requestBody.required: true`, `400 INVALID_REQUEST` 응답 추가)
+
+---
+
 ## D. 아직 정하지 못한 것
 
 명세 작성은 진행 가능하며, 해당 오퍼레이션에 `[가정]` 태그로 표시해 두었습니다.
@@ -941,7 +965,6 @@ ADR-011이 "커서 방식을 쓴다"까지만 정하고 토큰 안에 뭘 담을
 | 항목 | 무엇이 걸려 있나 | 결정 주체 |
 |---|---|---|
 | `autoArrangeTrip`의 `additionalPlaceIds`가 응답 `items`에 어떻게 나타나는가 | 명세상 `AutoArrangeResult.items`의 각 원소는 `tripPlaceId`가 필수(`required`)다. 그런데 `additionalPlaceIds`로 넣은 장소는 저장된 적이 없어(ADR-031 — 자동 배치는 제안만 하고 저장하지 않는다) `tripPlaceId`가 애초에 발급된 적이 없다. 이 오퍼레이션의 핵심 사용법은 응답의 `items`를 그대로 `PUT /trips/{tripId}/places/order`에 넘기는 것인데(요청 본문 모양이 같다고 명시), `PUT /order`는 실제로 존재하는 `tripPlaceId`만 받아준다 — 그러니 없는 `tripPlaceId`를 채워 넣으면 그대로 못 넘긴다. 1차 구현은 `additionalPlaceIds`를 "기존 장소들을 어떻게 배치해야 좋을지" 계산할 때 참고용 가상의 지점으로만 쓰고, 응답 `items`에는 넣지 않는 방식으로 이 모순을 우회했다(기존에 저장된 장소만 재배열해서 돌려준다). 명세를 고쳐 `tripPlaceId`를 선택값으로 바꾸고 `additionalPlaceIds`가 만들어낸 항목도 `items`에 포함시킬지, 포함시킨다면 클라이언트가 그 항목을 어떻게 구분해서 처리해야 하는지는 별도로 정해야 한다 (PLAN-09) | 명세 작성자 |
-| `importSharedCourse`의 `startDate` 생략 시 "기간 없는 초안" 상태를 지금 구조로 표현할 수 없다 | 명세 설명은 "`startDate`를 생략하면 기간 없는 초안으로 들어옵니다"라고 하지만, 이를 뒷받침할 데이터 구조가 없다. (1) `trips.start_date`/`end_date`가 DB에 `NOT NULL`이고 `CHECK (start_date <= end_date)` 제약까지 걸려 있다(V1 마이그레이션). (2) `Trip.startDate`/`endDate` 엔티티 필드도 `nullable = false`. (3) `TripSummary.startDate`/`endDate`가 명세에서 `required`이고 타입이 `string`뿐이라 다른 진짜 nullable 필드(`thumbnailUrl` 등)처럼 `[string, 'null']`이 아니다. (4) `TripStatus` enum이 `[UPCOMING, ONGOING, PAST]` 세 값뿐이라 "아직 날짜 없음" 상태를 표현할 값이 없다. 진짜로 지원하려면 DB 마이그레이션(nullable 전환) + 엔티티 + 명세(TripStatus 새 값, TripSummary/TripDetail 날짜 필드 nullable화) + `durationDays()`·목록 정렬·`days` 배열 조립 로직 전부를 손봐야 해서 Trip 도메인 전체에 영향이 크다. 1차 구현은 `importSharedCourse`에서 `startDate`를 사실상 필수로 취급하고(생략 시 처리 방식은 별도 결정 전까지 보류), 날짜 없는 초안 지원 자체는 범위에서 뺐다 (PLAN-12) | 명세 작성자 |
 
 ### 아카이브 · 지도 · 정원에서 드러난 미정 항목 (2026-09-07)
 

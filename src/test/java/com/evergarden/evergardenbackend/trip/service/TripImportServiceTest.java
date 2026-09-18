@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.evergarden.evergardenbackend.community.entity.Post;
@@ -120,29 +119,6 @@ class TripImportServiceTest {
         assertThatThrownBy(() -> service.importCourse(USER_ID, 1L, new ImportCourseRequest(LocalDate.now(), null)))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.TRIP_NOT_FOUND);
-    }
-
-    @Test
-    @DisplayName("startDate를 생략하면 INVALID_REQUEST")
-    void startDate_생략() {
-        Post p = post(1L, ShareType.COURSE, original);
-        given(postRepository.findById(1L)).willReturn(Optional.of(p));
-
-        assertThatThrownBy(() -> service.importCourse(USER_ID, 1L, new ImportCourseRequest(null, null)))
-                .isInstanceOf(BusinessException.class)
-                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_REQUEST);
-        verify(tripRepository, never()).save(any());
-    }
-
-    @Test
-    @DisplayName("본문 자체가 없으면 INVALID_REQUEST")
-    void 본문_없음() {
-        Post p = post(1L, ShareType.COURSE, original);
-        given(postRepository.findById(1L)).willReturn(Optional.of(p));
-
-        assertThatThrownBy(() -> service.importCourse(USER_ID, 1L, null))
-                .isInstanceOf(BusinessException.class)
-                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_REQUEST);
     }
 
     @Test

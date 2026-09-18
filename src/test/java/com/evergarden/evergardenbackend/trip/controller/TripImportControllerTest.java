@@ -4,6 +4,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -89,26 +91,26 @@ class TripImportControllerTest {
     }
 
     @Test
-    @DisplayName("본문 없이 호출해도 서비스에 위임한다 — startDate 필수 여부는 서비스가 판단한다")
+    @DisplayName("본문 없이 호출하면 INVALID_REQUEST — 서비스를 부르지 않는다(ADR-059)")
     void 본문없이_호출() throws Exception {
-        given(tripImportService.importCourse(eq(1L), eq(5L), eq(null))).willReturn(mock(TripDetail.class));
-
         mvc.perform(post("/posts/5/course/import").header("Authorization", "Bearer " + accessToken))
-                .andExpect(status().isOk());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+
+        verify(tripImportService, never()).importCourse(any(), any(), any());
     }
 
     @Test
-    @DisplayName("startDate 생략으로 인한 INVALID_REQUEST가 그대로 전달된다")
-    void startDate_생략_전달() throws Exception {
-        given(tripImportService.importCourse(eq(1L), eq(5L), any()))
-                .willThrow(new BusinessException(ErrorCode.INVALID_REQUEST));
-
+    @DisplayName("startDate가 없으면 INVALID_REQUEST — 서비스를 부르지 않는다(ADR-059)")
+    void startDate_생략() throws Exception {
         mvc.perform(post("/posts/5/course/import")
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+
+        verify(tripImportService, never()).importCourse(any(), any(), any());
     }
 
     @Test

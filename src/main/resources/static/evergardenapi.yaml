@@ -1082,26 +1082,25 @@ paths:
 
         **`startDate`를 받아 그날부터 일차를 다시 매깁니다**(ADR-048).
         원본이 3박 4일이면 내 시작일부터 3박 4일로 잡힙니다.
-        생략하면 기간 없는 초안으로 들어오고, 나중에 `PATCH /trips/{tripId}`로 채웁니다 —
-        원본 날짜를 그대로 복사하면 가져오자마자 지난 여행으로 분류됩니다.
+        원본 날짜를 그대로 복사하면 가져오자마자 지난 여행으로 분류되므로,
+        시작일은 매번 새로 받습니다 — 생략할 수 없습니다.
       parameters:
         - name: postId
           in: path
           required: true
           schema: { type: integer, format: int64 }
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
               type: object
+              required: [startDate]
               properties:
                 startDate:
-                  type: [string, 'null']
+                  type: string
                   format: date
-                  description: |
-                    복사본의 여행 시작일. 원본의 여행 일수만큼 여기서부터 다시 매깁니다.
-                    생략하면 기간 없는 초안으로 들어옵니다(ADR-048)
+                  description: 복사본의 여행 시작일. 원본의 여행 일수만큼 여기서부터 다시 매긴다
                 title:
                   type: [string, 'null']
                   maxLength: 60
@@ -1116,6 +1115,12 @@ paths:
                 properties:
                   data: { $ref: '#/components/schemas/TripDetail' }
                   meta: { type: 'null' }
+        '400':
+          description: |
+            `INVALID_REQUEST` — `startDate`가 없음
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
         '404':
           description: |
             `POST_NOT_FOUND` — 게시물이 없거나 삭제됨

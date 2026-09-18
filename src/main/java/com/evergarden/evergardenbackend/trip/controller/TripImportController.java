@@ -26,7 +26,7 @@ public class TripImportController {
     public ApiResponse<TripDetail> importCourse(
             @AuthenticationPrincipal AuthPrincipal me,
             @PathVariable Long postId,
-            @Valid @RequestBody(required = false) ImportCourseRequest request) {
+            @Valid @RequestBody ImportCourseRequest request) {
         return ApiResponse.of(tripImportService.importCourse(me.userId(), postId, request));
     }
 }
