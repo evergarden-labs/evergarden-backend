@@ -4,6 +4,7 @@ import com.evergarden.evergardenbackend.global.response.ApiResponse;
 import com.evergarden.evergardenbackend.global.response.PageMeta;
 import com.evergarden.evergardenbackend.global.security.AuthPrincipal;
 import com.evergarden.evergardenbackend.place.dto.PlaceSummary;
+import com.evergarden.evergardenbackend.trip.dto.AutoArrangeApplyRequest;
 import com.evergarden.evergardenbackend.trip.dto.AutoArrangeRequest;
 import com.evergarden.evergardenbackend.trip.dto.AutoArrangeResult;
 import com.evergarden.evergardenbackend.trip.dto.TripCreateRequest;
@@ -98,6 +99,14 @@ public class TripController {
             @PathVariable Long tripId,
             @RequestBody(required = false) AutoArrangeRequest request) {
         return ApiResponse.of(tripAutoArrangeService.propose(me.userId(), tripId, request));
+    }
+
+    @PostMapping("/{tripId}/auto-arrange/apply")
+    public ApiResponse<TripDetail> applyAutoArrangement(
+            @AuthenticationPrincipal AuthPrincipal me,
+            @PathVariable Long tripId,
+            @Valid @RequestBody AutoArrangeApplyRequest request) {
+        return ApiResponse.of(tripAutoArrangeService.apply(me.userId(), tripId, request));
     }
 
     @GetMapping("/{tripId}/nearby-places")
