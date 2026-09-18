@@ -1,6 +1,6 @@
 # ERD
 
-> 최종 수정 2026-09-07 · 근거 문서 5종 중 하나
+> 최종 수정 2026-09-19 · 근거 문서 5종 중 하나
 >
 > 테이블 25개. 모든 테이블은 `created_at`·`updated_at`을 가지며 아래 표에서는 생략했습니다
 > (`post_likes`처럼 수정될 일이 없는 테이블은 `created_at`만).
@@ -12,7 +12,6 @@
 | 데이터 | 어디에 | 왜 |
 |---|---|---|
 | 리프레시 토큰 | Redis (`jti → user_id`, TTL 7일) | 만료 관리를 TTL에 맡깁니다 |
-| 콘텐츠랩 상세 응답 | Redis (짧은 TTL) | `places`에는 자주 쓰는 필드만 적재합니다 |
 | 사진·영상 원본 | S3 | `media.storage_key`로 참조 (ADR-023) |
 
 ---
@@ -69,14 +68,16 @@
 | `content_type_id` | VARCHAR(10) |  | Y | 관광지·음식점·숙박 등 분류 |
 | `title` | VARCHAR(200) |  | N |  |
 | `addr` | VARCHAR(300) |  | Y |  |
-| `tel` | VARCHAR(50) |  | Y |  |
+| `tel` | TEXT |  | Y | 자유 텍스트라 길이를 예측할 수 없음. 원래 VARCHAR(50)이었다가 실전 데이터로 넘쳐서 변경 |
 | `lat` | NUMERIC(10,7) |  | N | 동선 계산·주변 추천에 사용 |
 | `lng` | NUMERIC(10,7) |  | N |  |
 | `region_code` | VARCHAR(10) | FK | N | → regions. 게시물 지역 추출의 출발점 |
 | `thumbnail_url` | TEXT |  | Y |  |
-| `overview` | TEXT |  | Y | 콘텐츠랩 소개글 |
-| `use_time` | TEXT |  | Y | 이용 시간. 원문 그대로 (ADR-049) |
-| `rest_date` | TEXT |  | Y | 휴무일. 원문 그대로 (ADR-049) |
+| `overview` | TEXT |  | Y | 콘텐츠랩 소개글. `getPlace` 최초 조회 때만 실시간으로 채움 (ADR-061) |
+| `use_time` | TEXT |  | Y | 이용 시간. 원문 그대로 (ADR-049). 관광지·문화시설·음식점만 채워짐 (ADR-061) |
+| `rest_date` | TEXT |  | Y | 휴무일. 원문 그대로 (ADR-049). `use_time`과 같은 제약 (ADR-061) |
+| `image_urls` | TEXT |  | Y | 관광 사진 URL 목록을 JSON 배열 문자열로 저장 (ADR-061) |
+| `detail_synced_at` | TIMESTAMPTZ |  | Y | `overview`·`use_time`·`rest_date`·`image_urls`를 채운 시각. `null`=아직 안 채움 (ADR-061) |
 | `synced_at` | TIMESTAMPTZ |  | N |  |
 
 ## `trips` · 여행 일정 = 공유 대상인 코스
