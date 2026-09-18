@@ -34,9 +34,9 @@ final class RouteOptimizer {
             for (int i = 1; i < remaining.size(); i++) {
                 TripPlace candidate = remaining.get(i);
                 long distance = GeoDistance.metersBetween(current, candidate);
-                // 거리가 같으면 tripPlaceId가 작은 쪽 — 그래야 결과가 결정적이다
+                // 거리가 같으면 정해진 순서로 — 그래야 결과가 결정적이다
                 if (distance < nearestDistance
-                        || (distance == nearestDistance && candidate.getId() < nearest.getId())) {
+                        || (distance == nearestDistance && tieBreakBefore(candidate, nearest))) {
                     nearest = candidate;
                     nearestDistance = distance;
                 }
@@ -46,6 +46,24 @@ final class RouteOptimizer {
             current = nearest;
         }
         return route;
+    }
+
+    /**
+     * {@code a}가 {@code b}보다 먼저 와야 하는지. 둘 다 저장된 장소면 {@code tripPlaceId}로,
+     * {@code additionalPlaceIds}로 넣어본 저장 안 된 장소(id가 {@code null})가 섞이면
+     * 저장된 쪽을 먼저 두고, 둘 다 저장 안 됐으면 관광지 자체의 id로 비교한다 — 항상
+     * 결정적인 순서가 나오게.
+     */
+    private static boolean tieBreakBefore(TripPlace a, TripPlace b) {
+        Long aId = a.getId();
+        Long bId = b.getId();
+        if (aId != null && bId != null) {
+            return aId < bId;
+        }
+        if (aId == null && bId == null) {
+            return a.getPlace().getId() < b.getPlace().getId();
+        }
+        return aId != null;
     }
 
     /** 교차하는 두 구간을 뒤집었을 때 더 짧아지면 뒤집는다. 더 나아질 게 없을 때까지 반복한다. */
