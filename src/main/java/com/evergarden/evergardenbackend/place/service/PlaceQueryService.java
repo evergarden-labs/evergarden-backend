@@ -18,22 +18,22 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 관광지 검색·상세 조회(PLAN-06·07). 콘텐츠랩에서 미리 받아 {@code places} 테이블에
- * 적재해 둔 데이터만 조회한다 — 라이브로 TourAPI를 다시 부르지 않는다. 전국 8개 콘텐츠
- * 타입을 이미 다 동기화해 둬서, 조회 시점에 없는 데이터를 실시간으로 채울 필요가 없다.
+ * 관광지 검색·상세 조회(PLAN-06·07). {@code search}는 콘텐츠랩에서 미리 받아 {@code places}
+ * 테이블에 적재해 둔 데이터만 조회한다 — 라이브로 TourAPI를 다시 부르지 않는다. 전국 8개
+ * 콘텐츠 타입을 이미 다 동기화해 둬서, 조회 시점에 없는 데이터를 실시간으로 채울 필요가 없다.
  *
- * <p>{@code getPlace}의 {@code overview}·{@code useTime}·{@code restDate}·{@code imageUrls}는
- * 콘텐츠랩 상세조회 API가 있어야 채울 수 있는데, 이번 범위에는 없어 항상 비어 있다 —
- * docs/decisions.md 참고.
+ * <p>{@code getPlace}는 {@code overview}·{@code useTime}·{@code restDate}·{@code imageUrls}가
+ * 아직 없으면 {@link PlaceDetailFetchService}로 딱 한 번 라이브 조회해서 영구 저장한다(ADR-061).
  */
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
 public class PlaceQueryService {
 
     private final PlaceRepository placeRepository;
     private final RegionRepository regionRepository;
+    private final PlaceDetailFetchService placeDetailFetchService;
 
+    @Transactional(readOnly = true)
     public Page<PlaceSummary> search(String keyword, String regionCode, String contentTypeId, Pageable pageable) {
         if (keyword == null && regionCode == null) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST);
@@ -46,9 +46,11 @@ public class PlaceQueryService {
                 .map(PlaceSummary::of);
     }
 
+    @Transactional
     public PlaceDetail getPlace(Long placeId) {
         Place place = placeRepository.findById(placeId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PLACE_NOT_FOUND));
+        placeDetailFetchService.ensureDetailFetched(place);
         return PlaceDetail.of(place);
     }
 
