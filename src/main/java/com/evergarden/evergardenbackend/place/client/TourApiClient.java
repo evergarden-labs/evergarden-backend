@@ -3,6 +3,9 @@ package com.evergarden.evergardenbackend.place.client;
 import com.evergarden.evergardenbackend.place.client.dto.AreaBasedItem;
 import com.evergarden.evergardenbackend.place.client.dto.AreaBasedPage;
 import com.evergarden.evergardenbackend.place.client.dto.AreaBasedSyncPage;
+import com.evergarden.evergardenbackend.place.client.dto.DetailCommonItem;
+import com.evergarden.evergardenbackend.place.client.dto.DetailImageItem;
+import com.evergarden.evergardenbackend.place.client.dto.DetailIntroItem;
 import com.evergarden.evergardenbackend.place.client.dto.LdongDistrictItem;
 import com.evergarden.evergardenbackend.place.client.dto.RegionCode;
 import com.evergarden.evergardenbackend.place.client.dto.SyncAreaBasedItem;
@@ -12,6 +15,7 @@ import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
@@ -36,6 +40,9 @@ public class TourApiClient {
     private static final String LDONG_CODE_PATH = "/ldongCode2";
     private static final String AREA_BASED_LIST_PATH = "/areaBasedList2";
     private static final String AREA_BASED_SYNC_LIST_PATH = "/areaBasedSyncList2";
+    private static final String DETAIL_COMMON_PATH = "/detailCommon2";
+    private static final String DETAIL_INTRO_PATH = "/detailIntro2";
+    private static final String DETAIL_IMAGE_PATH = "/detailImage2";
     private static final String MOBILE_OS = "ETC";
     private static final String MOBILE_APP = "evergarden";
     private static final int MAX_ROWS = 100;
@@ -116,6 +123,52 @@ public class TourApiClient {
         return envelope == null
                 ? new AreaBasedSyncPage(List.of(), 0)
                 : new AreaBasedSyncPage(envelope.items(), envelope.totalCount());
+    }
+
+    /**
+     * 공통정보조회({@code detailCommon2}) — {@code overview}(소개글)용. {@code contentId}
+     * 외의 파라미터를 전부 거부한다(실전 확인) — {@code contentTypeId}나
+     * {@code overviewYN} 같은 흔히 넣는 옵션을 붙이면 요청 자체가 거부된다.
+     */
+    public Optional<DetailCommonItem> fetchDetailCommon(String contentId) {
+        String query = commonQuery(1) + "&contentId=" + contentId;
+        URI uri = URI.create(tourApiProperties.baseUrl() + DETAIL_COMMON_PATH + "?" + query);
+
+        TourApiEnvelope<DetailCommonItem> envelope = tourApiRestClient.get()
+                .uri(uri)
+                .retrieve()
+                .body(new ParameterizedTypeReference<TourApiEnvelope<DetailCommonItem>>() {
+                });
+        return envelope == null ? Optional.empty() : envelope.items().stream().findFirst();
+    }
+
+    /**
+     * 소개정보조회({@code detailIntro2}) — 이용시간·휴무일용. {@code contentTypeId}까지
+     * 같이 보내야 한다(공통정보조회와 다름).
+     */
+    public Optional<DetailIntroItem> fetchDetailIntro(String contentId, String contentTypeId) {
+        String query = commonQuery(1) + "&contentId=" + contentId + "&contentTypeId=" + contentTypeId;
+        URI uri = URI.create(tourApiProperties.baseUrl() + DETAIL_INTRO_PATH + "?" + query);
+
+        TourApiEnvelope<DetailIntroItem> envelope = tourApiRestClient.get()
+                .uri(uri)
+                .retrieve()
+                .body(new ParameterizedTypeReference<TourApiEnvelope<DetailIntroItem>>() {
+                });
+        return envelope == null ? Optional.empty() : envelope.items().stream().findFirst();
+    }
+
+    /** 관광사진정보조회({@code detailImage2}) — {@code imageUrls}용. 사진이 없으면 빈 목록. */
+    public List<DetailImageItem> fetchDetailImages(String contentId) {
+        String query = commonQuery(MAX_ROWS) + "&contentId=" + contentId;
+        URI uri = URI.create(tourApiProperties.baseUrl() + DETAIL_IMAGE_PATH + "?" + query);
+
+        TourApiEnvelope<DetailImageItem> envelope = tourApiRestClient.get()
+                .uri(uri)
+                .retrieve()
+                .body(new ParameterizedTypeReference<TourApiEnvelope<DetailImageItem>>() {
+                });
+        return envelope == null ? List.of() : envelope.items();
     }
 
     private String commonQuery(int numOfRows) {
