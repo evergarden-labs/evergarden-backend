@@ -1,6 +1,6 @@
 # 장소 데이터 연동 — TourAPI · 카카오 로컬
 
-> 최종 수정 2026-09-18 · 근거: PLAN-06·07·08 · ADR-004
+> 최종 수정 2026-09-19 · 근거: PLAN-06·07·08 · ADR-004
 >
 > **이 문서는 외부 API 두 개의 연동 규격을 담습니다.** `places`·`regions` 테이블을
 > 채우는 배치가 실제로 무엇을 호출하는지는 `evergardenapi.yaml`에 안 나옵니다 —
@@ -164,7 +164,8 @@ kakao-local:
 
 ## 5. 활용신청한 TourAPI 기능 (참고)
 
-공공데이터포털에 아래 7개만 신청해 뒀다 — 지금 스펙에 필요한 것만 고른 목록이다.
+공공데이터포털의 "한국관광공사_국문 관광정보 서비스_GW"(https://www.data.go.kr/data/15101578/openapi.do)
+아래 8개를 신청해 뒀다 — 지금 스펙에 필요한 것만 고른 목록이다.
 
 - 법정동코드조회 (`ldongCode2`)
 - 지역기반 관광정보조회 (`areaBasedList2`)
@@ -172,6 +173,7 @@ kakao-local:
 - 위치기반 관광정보조회 (`locationBasedList2`) — `listNearbyPlaces`(PLAN-08)용
 - 공통정보조회 (`detailCommon2`) — `getPlace`(PLAN-07) 상세 정보용
 - 소개정보조회 (`detailIntro2`) — 이용시간·휴무일용
+- 관광사진정보조회 (`detailImage2`) — `getPlace`(PLAN-07)의 `imageUrls`용(2026-09-19 확인, 이미 승인됨)
 - 관광정보 동기화 목록 조회 (`areaBasedSyncList2`)
 
 일일 호출 한도는 기능당 1,000회.
