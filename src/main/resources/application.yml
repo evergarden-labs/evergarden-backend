@@ -119,6 +119,18 @@ storage:
 websocket:
   public-url: ${WEBSOCKET_URL}
 
+# 콘텐츠랩 관광정보 연동 (ADR-004)
+# 매 요청마다 직접 부르지 않고, 배치로 받아 places/regions에 적재해 둔 뒤 그걸 조회한다.
+tour-api:
+  base-url: https://apis.data.go.kr/B551011/KorService2
+  service-key: ${TOUR_API_SERVICE_KEY}
+
+# 카카오 로컬 API. TourAPI 법정동코드엔 좌표가 없어서, 지역명을 좌표로 바꾸는 데만 쓴다.
+# oauth.kakao(로그인 토큰 검증)와는 목적이 달라 REST API 키를 따로 둔다.
+kakao-local:
+  base-url: https://dapi.kakao.com/v2/local
+  rest-api-key: ${KAKAO_LOCAL_API_KEY}
+
 # 정책 값 (ADR-016 · ADR-018 · ADR-044)
 policy:
   region-visit:

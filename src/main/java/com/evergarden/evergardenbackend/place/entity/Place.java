@@ -2,6 +2,7 @@ package com.evergarden.evergardenbackend.place.entity;
 
 import com.evergarden.evergardenbackend.global.entity.BaseTimeEntity;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
@@ -12,6 +13,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -48,7 +50,8 @@ public class Place extends BaseTimeEntity {
     @Column(length = 300)
     private String addr;
 
-    @Column(length = 50)
+    /** TourAPI 원문 그대로. 대표번호·예약번호 병기 같은 자유 텍스트라 길이를 예측할 수 없다 */
+    @Column(columnDefinition = "text")
     private String tel;
 
     @Column(nullable = false, precision = 10, scale = 7)
@@ -75,6 +78,19 @@ public class Place extends BaseTimeEntity {
     /** 휴무일. 원문 그대로 */
     @Column(name = "rest_date", columnDefinition = "text")
     private String restDate;
+
+    /** 관광 사진 정보(공공저작물). {@link #detailSyncedAt}가 null이면 아직 받아온 적이 없다 */
+    @Convert(converter = StringListJsonConverter.class)
+    @Column(name = "image_urls", columnDefinition = "text")
+    private List<String> imageUrls;
+
+    /**
+     * {@code getPlace} 라이브 상세조회(overview·useTime·restDate·imageUrls)로 채운 시각.
+     * 한 번 받아오면 계속 쓴다 — 짧은 TTL로 매번 다시 부르지 않는다(ADR-061).
+     * {@code null}이면 아직 한 번도 상세조회를 안 한 것이다.
+     */
+    @Column(name = "detail_synced_at")
+    private LocalDateTime detailSyncedAt;
 
     @Column(name = "synced_at", nullable = false)
     private LocalDateTime syncedAt;
@@ -113,5 +129,19 @@ public class Place extends BaseTimeEntity {
         this.useTime = useTime;
         this.restDate = restDate;
         this.syncedAt = syncedAt;
+    }
+
+    /** {@code getPlace}(PLAN-07) 라이브 상세조회 결과를 채운다. 다시 부르지 않게 {@link #hasDetail}로 확인한다. */
+    public void syncDetail(String overview, String useTime, String restDate, List<String> imageUrls,
+                            LocalDateTime detailSyncedAt) {
+        this.overview = overview;
+        this.useTime = useTime;
+        this.restDate = restDate;
+        this.imageUrls = imageUrls;
+        this.detailSyncedAt = detailSyncedAt;
+    }
+
+    public boolean hasDetail() {
+        return detailSyncedAt != null;
     }
 }

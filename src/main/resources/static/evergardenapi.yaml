@@ -981,13 +981,20 @@ paths:
         일정에 담긴 장소들을 이동 거리가 짧아지는 순서로 다시 배치한 **제안을 반환합니다.**
         **저장하지 않습니다**(ADR-031). 일정은 그대로 있습니다.
 
-        제안이 마음에 들면 앱이 응답의 `items`를 그대로
-        `PUT /trips/{tripId}/places/order`에 보내 적용합니다.
-        요청 본문 모양이 같아서 그대로 전달하면 됩니다.
-        마음에 들지 않으면 아무것도 하지 않으면 됩니다 — 되돌릴 것이 없습니다.
+        `additionalPlaceIds`로 넣어본 장소도 배치 계산에 함께 들어가고 `items`에
+        나타납니다. 다만 아직 일정에 저장된 적이 없어 `tripPlaceId`가 `null`입니다
+        (ADR-060).
+
+        제안이 마음에 들면 앱이 응답을 그대로
+        `POST /trips/{tripId}/auto-arrange/apply`에 보내 적용합니다 — `tripPlaceId`가
+        있던 항목은 자리만 바뀌고, `null`이던 항목(=`additionalPlaceIds`로 넣어본 것)은
+        이 시점에 실제로 일정에 추가됩니다. 마음에 들지 않으면 아무것도 하지 않으면
+        됩니다 — 되돌릴 것이 없습니다.
 
         **장소를 추천해 주지는 않습니다** — 순서 정리까지가 이 오퍼레이션의 범위입니다(ADR-020).
         얼마나 나아지는지는 `currentDistanceMeters`와 `proposedDistanceMeters`로 비교합니다.
+        `currentDistanceMeters`는 지금 저장된 장소만 기준입니다 — `additionalPlaceIds`는
+        아직 저장 전이라 "지금"에 포함되지 않습니다.
 
         **좌표 기반 자체 계산입니다**(ADR-032). 외부 모델을 호출하지 않으므로
         비용이 들지 않고, 같은 입력에는 항상 같은 결과가 나오며, 외부 장애로 실패하지 않습니다.
@@ -1023,6 +1030,62 @@ paths:
         '404':
           description: |
             `TRIP_NOT_FOUND` · `PLACE_NOT_FOUND`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /trips/{tripId}/auto-arrange/apply:
+    post:
+      tags: [플래너]
+      operationId: applyAutoArrangement
+      summary: AI 일정 자동 배치 적용
+      x-user-stories: [PLAN-09]
+      description: |
+        `autoArrangeTrip`이 돌려준 응답을 **그대로 다시 보내면** 그 배치를 실제로
+        적용합니다(ADR-060). 재가공할 필요가 없습니다 — 요청 본문 모양이
+        `AutoArrangeResult`와 같습니다.
+
+        - `tripPlaceId`가 있던 항목 → 그 장소를 해당 일자·순서로 옮깁니다.
+        - `tripPlaceId`가 `null`이던 항목(=제안 당시 `additionalPlaceIds`로 넣어봤던
+          장소) → 이 시점에 실제로 일정에 추가됩니다(`place.placeId` 기준).
+
+        한 트랜잭션으로 처리합니다 — 일부만 적용되는 일은 없습니다. 기존에 저장돼
+        있던 장소는 빠짐없이 포함해야 합니다(부분 전송 거부) — `autoArrangeTrip`
+        응답을 가공 없이 그대로 보내면 항상 만족됩니다.
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AutoArrangeApplyRequest' }
+      responses:
+        '200':
+          description: 적용 완료
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/TripDetail' }
+                  meta: { type: 'null' }
+        '400':
+          description: |
+            `INVALID_REQUEST` — 기존에 저장된 장소 중 빠진 것이 있음(부분 전송) ·
+            같은 일자·순서가 두 항목 이상에서 겹침 · `dayNumber`가 일정 기간 밖
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: |
+            `NOT_RESOURCE_OWNER`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: |
+            `TRIP_NOT_FOUND` · `TRIP_PLACE_NOT_FOUND`(존재하지 않는 `tripPlaceId`가 섞임) ·
+            `PLACE_NOT_FOUND`(`tripPlaceId`가 `null`인 항목의 `place.placeId`가 존재하지 않음)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -1082,26 +1145,25 @@ paths:
 
         **`startDate`를 받아 그날부터 일차를 다시 매깁니다**(ADR-048).
         원본이 3박 4일이면 내 시작일부터 3박 4일로 잡힙니다.
-        생략하면 기간 없는 초안으로 들어오고, 나중에 `PATCH /trips/{tripId}`로 채웁니다 —
-        원본 날짜를 그대로 복사하면 가져오자마자 지난 여행으로 분류됩니다.
+        원본 날짜를 그대로 복사하면 가져오자마자 지난 여행으로 분류되므로,
+        시작일은 매번 새로 받습니다 — 생략할 수 없습니다.
       parameters:
         - name: postId
           in: path
           required: true
           schema: { type: integer, format: int64 }
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
               type: object
+              required: [startDate]
               properties:
                 startDate:
-                  type: [string, 'null']
+                  type: string
                   format: date
-                  description: |
-                    복사본의 여행 시작일. 원본의 여행 일수만큼 여기서부터 다시 매깁니다.
-                    생략하면 기간 없는 초안으로 들어옵니다(ADR-048)
+                  description: 복사본의 여행 시작일. 원본의 여행 일수만큼 여기서부터 다시 매긴다
                 title:
                   type: [string, 'null']
                   maxLength: 60
@@ -1116,6 +1178,12 @@ paths:
                 properties:
                   data: { $ref: '#/components/schemas/TripDetail' }
                   meta: { type: 'null' }
+        '400':
+          description: |
+            `INVALID_REQUEST` — `startDate`가 없음
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
         '404':
           description: |
             `POST_NOT_FOUND` — 게시물이 없거나 삭제됨
@@ -1205,6 +1273,14 @@ paths:
         서버가 요일별 구조로 파싱하지 않습니다 — 분류마다 형식이 제각각이라
         파싱하면 틀린 정보를 보여줄 위험이 있습니다.
         정보가 없는 장소는 `null`이고, 앱은 그럴 때 항목을 감춥니다.
+
+        **`useTime`·`restDate`는 관광지·문화시설·음식점만 채워집니다**(ADR-061).
+        나머지 분류(축제·여행코스·레포츠·숙박·쇼핑)는 "이용시간·휴무일"이라는 개념
+        자체가 콘텐츠랩 쪽에서도 다르게 취급돼(행사 기간, 체크인 시간 등) `null`입니다.
+
+        **처음 조회할 때만 콘텐츠랩에 실시간으로 물어서 채우고, 그 뒤로는 DB에 영구
+        저장해 다시 쓰지 않습니다**(ADR-061). 매번 다시 묻지 않으니 운영 시간이
+        바뀌어도 자동으로 갱신되진 않습니다.
       parameters:
         - $ref: '#/components/parameters/PlaceId'
       responses:
@@ -4920,33 +4996,56 @@ components:
           type: array
           description: |
             아직 일정에 없지만 이번 배치에 함께 넣어보고 싶은 장소들.
-            **제안에만 반영되고 저장되지 않습니다**(ADR-031)
+            응답 `items`에 함께 나타나지만 아직 저장되지 않아 `tripPlaceId`가
+            `null`입니다(ADR-060). 어느 날짜에 넣을지는 서버가 고릅니다 — 그
+            장소를 넣었을 때 이동 거리가 가장 적게 늘어나는 날짜입니다
           items: { type: integer, format: int64 }
 
     AutoArrangeResult:
       type: object
       description: |
         제안된 배치입니다. **저장되지 않았습니다.**
-        `items`를 그대로 `PUT /trips/{tripId}/places/order`에 보내면 적용됩니다
+        이 응답을 그대로 `POST /trips/{tripId}/auto-arrange/apply`에 보내면 적용됩니다
       required: [items, currentDistanceMeters, proposedDistanceMeters]
       properties:
         items:
           type: array
-          description: '`TripPlaceOrderRequest.items`와 같은 모양입니다'
-          items:
-            type: object
-            required: [tripPlaceId, dayNumber, sortOrder]
-            properties:
-              tripPlaceId: { type: integer, format: int64 }
-              dayNumber: { type: integer, minimum: 1 }
-              sortOrder: { type: integer, minimum: 1 }
-              place: { $ref: '#/components/schemas/PlaceSummary' }
+          description: '`TripPlaceOrderRequest.items`와 같은 모양에 `place`가 더해진 것입니다'
+          items: { $ref: '#/components/schemas/AutoArrangeItem' }
         currentDistanceMeters:
           type: integer
-          description: 지금 순서대로 다녔을 때의 이동 거리 합
+          description: |
+            지금 저장된 순서대로 다녔을 때의 이동 거리 합. `additionalPlaceIds`는
+            아직 저장 전이라 포함되지 않습니다
         proposedDistanceMeters:
           type: integer
-          description: 제안한 순서로 다녔을 때의 이동 거리 합
+          description: 제안한 순서로 다녔을 때의 이동 거리 합. `additionalPlaceIds`도 포함됩니다
+
+    AutoArrangeApplyRequest:
+      type: object
+      required: [items]
+      description: |
+        `autoArrangeTrip` 응답을 그대로 다시 보내는 것과 같은 모양입니다 — 재가공이
+        필요 없습니다(ADR-060)
+      properties:
+        items:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/AutoArrangeItem' }
+
+    AutoArrangeItem:
+      type: object
+      required: [dayNumber, sortOrder, place]
+      properties:
+        tripPlaceId:
+          type: [integer, 'null']
+          format: int64
+          description: |
+            있으면 그 장소를 이 자리로 옮깁니다. `null`이면 `place.placeId`를
+            이 자리에 새로 추가합니다(ADR-060)
+        dayNumber: { type: integer, minimum: 1 }
+        sortOrder: { type: integer, minimum: 1 }
+        place: { $ref: '#/components/schemas/PlaceSummary' }
 
     TripRoute:
       type: object
