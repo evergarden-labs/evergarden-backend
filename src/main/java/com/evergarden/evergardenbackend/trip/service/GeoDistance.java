@@ -32,8 +32,11 @@ final class GeoDistance {
 
     /** 일정에 담긴 두 장소 사이의 거리. */
     static long metersBetween(TripPlace a, TripPlace b) {
-        Place p1 = a.getPlace();
-        Place p2 = b.getPlace();
-        return metersBetween(p1.getLat(), p1.getLng(), p2.getLat(), p2.getLng());
+        return metersBetween(a.getPlace(), b.getPlace());
+    }
+
+    /** 관광지 두 곳 사이의 거리. */
+    static long metersBetween(Place a, Place b) {
+        return metersBetween(a.getLat(), a.getLng(), b.getLat(), b.getLng());
     }
 }
