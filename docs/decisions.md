@@ -947,6 +947,38 @@ ADR-011이 "커서 방식을 쓴다"까지만 정하고 토큰 안에 뭘 담을
 
 ---
 
+### ADR-060 · `additionalPlaceIds`는 응답에 `tripPlaceId: null`로 나타나고, 적용은 별도 오퍼레이션이 한다
+
+`autoArrangeTrip`이 `additionalPlaceIds`를 실제로 배치 계산에 반영해 `items`에
+포함시킵니다. 아직 저장된 적 없는 장소라 `tripPlaceId`가 `null`입니다.
+
+이 제안을 실제로 적용하는 건 `PUT /trips/{tripId}/places/order`가 아니라 새 오퍼레이션
+`POST /trips/{tripId}/auto-arrange/apply`가 맡습니다. 요청 본문 모양은
+`autoArrangeTrip` 응답과 똑같아서(`AutoArrangeItem` 배열) 클라이언트가 그대로 다시
+보내면 됩니다 — `tripPlaceId`가 있던 항목은 자리 이동, `null`이던 항목은 그 자리에
+새로 추가합니다.
+
+**어느 날짜에 넣을지** — 그 장소를 각 날짜에 임시로 넣어봤을 때 기존 경로에 추가되는
+거리(최적 삽입 비용)가 가장 적은 날짜로 정합니다. 동일한 날짜가 여러 개면 더 작은
+`dayNumber`를 고릅니다. 최종 순서는 그 날짜의 전체 장소(기존 + 이번에 넣어본 것)를
+다시 최적화해서 정하므로, 여기서 고른 자리는 "어느 날짜냐"만 결정하고 정확한 순서는
+아닙니다.
+
+**왜 `PUT /order`에 얹지 않았나** — `PUT /order`는 "지금 일정에 있는 장소 전부의
+자리만 바꾼다"가 계약입니다. 저장된 적 없는 항목이 섞여 들어오면 그 계약이 깨지고,
+`TripPlaceService`의 기존 검증(보낸 개수 = 현재 개수)도 다시 짜야 합니다. 별도
+오퍼레이션으로 두면 두 계약이 서로 안 부딪힙니다.
+
+**대가** — `PUT /order`만 있던 것보다 오퍼레이션이 하나 늘고, 클라이언트는 "이 응답을
+그대로 apply로 보낸다"와 "직접 순서만 바꿀 땐 order를 쓴다"를 구분해야 합니다.
+
+**영향** — PLAN-09 / `evergardenapi.yaml`의 `AutoArrangeRequest`·`AutoArrangeResult`
+스키마, 새 스키마 `AutoArrangeItem`·`AutoArrangeApplyRequest`, 새 오퍼레이션
+`POST /trips/{tripId}/auto-arrange/apply` / `TripPlaceRepository`(FK 제약이 있는
+`trip_places` 신규 추가·재배치를 한 트랜잭션으로 처리)
+
+---
+
 ## D. 아직 정하지 못한 것
 
 명세 작성은 진행 가능하며, 해당 오퍼레이션에 `[가정]` 태그로 표시해 두었습니다.
@@ -964,7 +996,6 @@ ADR-011이 "커서 방식을 쓴다"까지만 정하고 토큰 안에 뭘 담을
 
 | 항목 | 무엇이 걸려 있나 | 결정 주체 |
 |---|---|---|
-| `autoArrangeTrip`의 `additionalPlaceIds`가 응답 `items`에 어떻게 나타나는가 | 명세상 `AutoArrangeResult.items`의 각 원소는 `tripPlaceId`가 필수(`required`)다. 그런데 `additionalPlaceIds`로 넣은 장소는 저장된 적이 없어(ADR-031 — 자동 배치는 제안만 하고 저장하지 않는다) `tripPlaceId`가 애초에 발급된 적이 없다. 이 오퍼레이션의 핵심 사용법은 응답의 `items`를 그대로 `PUT /trips/{tripId}/places/order`에 넘기는 것인데(요청 본문 모양이 같다고 명시), `PUT /order`는 실제로 존재하는 `tripPlaceId`만 받아준다 — 그러니 없는 `tripPlaceId`를 채워 넣으면 그대로 못 넘긴다. 1차 구현은 `additionalPlaceIds`를 "기존 장소들을 어떻게 배치해야 좋을지" 계산할 때 참고용 가상의 지점으로만 쓰고, 응답 `items`에는 넣지 않는 방식으로 이 모순을 우회했다(기존에 저장된 장소만 재배열해서 돌려준다). 명세를 고쳐 `tripPlaceId`를 선택값으로 바꾸고 `additionalPlaceIds`가 만들어낸 항목도 `items`에 포함시킬지, 포함시킨다면 클라이언트가 그 항목을 어떻게 구분해서 처리해야 하는지는 별도로 정해야 한다 (PLAN-09) | 명세 작성자 |
 
 ### 아카이브 · 지도 · 정원에서 드러난 미정 항목 (2026-09-07)
 
