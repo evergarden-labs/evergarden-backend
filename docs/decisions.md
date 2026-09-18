@@ -979,6 +979,40 @@ ADR-011이 "커서 방식을 쓴다"까지만 정하고 토큰 안에 뭘 담을
 
 ---
 
+### ADR-061 · `getPlace`의 상세 정보는 처음 조회할 때만 콘텐츠랩에 물어서 DB에 영구 저장한다
+
+`getPlace`가 처음 불릴 때(그 장소의 `detail_synced_at`이 `null`일 때) 공통정보조회
+(`detailCommon2`)·소개정보조회(`detailIntro2`)·관광사진정보조회(`detailImage2`)를
+실시간으로 불러 `overview`·`useTime`·`restDate`·`imageUrls`를 채우고, `places`에
+그대로 영구 저장합니다. 그 뒤로는 다시 묻지 않습니다.
+
+**이유** — 명세는 원래 "짧은 TTL 캐시"를 말했지만, 이 값들(관광지 소개글·이용시간·
+사진)은 자주 바뀌는 정보가 아닙니다. 매번 다시 묻는 건 콘텐츠랩 호출 한도(기능당
+일일 1,000회)를 불필요하게 쓰는 일이고, `places` 테이블 자체가 이미 콘텐츠랩
+캐시(ADR-004)라서 한 번 받은 값을 거기 얹으면 Redis 같은 별도 캐시 저장소도
+필요 없습니다.
+
+**`useTime`/`restDate`는 관광지(12)·문화시설(14)·음식점(39) 세 타입만 채웁니다.**
+`detailIntro2`의 이용시간·휴무일 필드명이 콘텐츠타입마다 달라서(`usetime`/
+`usetimeculture`/`opentimefood` 등), 이 셋을 다른 프로젝트의 실측으로 확인했고
+(관련 PR: team-chaerok/chaerok-be#107, meomul-kyung/back#16) 나머지 다섯 타입
+(축제·여행코스·레포츠·숙박·쇼핑)은 "이용시간·휴무일"과 다른 개념(행사 기간,
+체크인 시간, 소요 시간 등)을 쓰거나 실측상 필드가 비어 있어 억지로 끼워 맞추지
+않고 `null`로 둡니다.
+
+`detailCommon2`는 `contentId` 외의 파라미터를 전부 거부합니다 — `contentTypeId`나
+`overviewYN` 같은 옵션을 붙이면 요청 자체가 거부됩니다(실전 확인).
+
+**대가** — 운영시간·소개글이 실제로 바뀌어도 자동으로 갱신되지 않습니다. 값을
+다시 받아오려면 `detail_synced_at`을 비우는 별도 작업이 필요한데, 아직 만들지
+않았습니다 — 이 정보들이 자주 바뀌지 않는다는 전제와 맞바꾼 선택입니다.
+
+**영향** — PLAN-07 / `places` 테이블에 `image_urls`·`detail_synced_at` 컬럼 추가
+(마이그레이션 V5) / `TourApiClient`의 `fetchDetailCommon`·`fetchDetailIntro`·
+`fetchDetailImages` / 새 서비스 `PlaceDetailFetchService`
+
+---
+
 ## D. 아직 정하지 못한 것
 
 명세 작성은 진행 가능하며, 해당 오퍼레이션에 `[가정]` 태그로 표시해 두었습니다.
