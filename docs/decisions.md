@@ -1,6 +1,6 @@
 # 결정 기록 (ADR)
 
-> 최종 수정 2026-09-07 · 근거 문서 4종 중 하나
+> 최종 수정 2026-09-19 · 근거 문서 4종 중 하나
 >
 > 이 문서는 **"왜 이렇게 정했는가"**를 남기는 곳입니다.
 > 스키마나 명세만 봐서는 이유를 알 수 없는 결정들을 모았습니다.
@@ -662,7 +662,9 @@ ARCH-02의 수행 작업이 "이름, 테마, 대표 색상을 변경한다"라 �
 ### ADR-048 · 가져온 코스는 새 시작일부터 일차를 다시 매긴다
 
 `POST /posts/{postId}/course/import`에 `startDate`를 받아 원본의 여행 일수만큼 다시 잡습니다.
-생략하면 기간 없는 초안으로 들어옵니다.
+
+~~생략하면 기간 없는 초안으로 들어옵니다.~~ → **뒤집힘.** ADR-059에서 `startDate`를
+필수로 바꿨습니다.
 
 **이유** — 원본 날짜를 그대로 복사하면 **가져오자마자 지난 여행으로 분류됩니다.**
 남의 코스를 가져오는 이유는 앞으로 갈 여행에 쓰려는 것입니다.
@@ -923,6 +925,94 @@ ADR-011이 "커서 방식을 쓴다"까지만 정하고 토큰 안에 뭘 담을
 
 ---
 
+### ADR-059 · `importSharedCourse`의 `startDate`는 생략할 수 없다 (ADR-048 뒤집힘)
+
+`POST /posts/{postId}/course/import`의 `startDate`를 필수로 바꿉니다. 생략하면
+`INVALID_REQUEST`입니다. ADR-048이 정했던 "생략하면 기간 없는 초안" 동작은 뒤집습니다.
+
+**이유** — "날짜 없는 일정"이라는 상태 자체가 지금 구조 어디에도 없습니다.
+`trips.start_date`/`end_date`가 DB에 `NOT NULL`이고, `Trip` 엔티티도 `nullable = false`이고,
+`TripSummary`·`TripDetail`의 날짜 필드도 명세에서 다른 진짜 nullable 필드(`thumbnailUrl` 등)와
+달리 `null`을 허용하지 않고, `TripStatus`도 `[UPCOMING, ONGOING, PAST]` 세 값뿐이라 "아직
+날짜 없음"을 표현할 값이 없습니다. 이 상태를 실제로 만들려면 DB 마이그레이션·엔티티·명세
+(`TripStatus` 새 값, 날짜 필드 nullable화)·`durationDays()`와 목록 정렬·`days` 배열 조립
+로직까지 Trip 도메인 전체를 고쳐야 해서, 들이는 비용이 "가져올 때 날짜를 나중에 정해도
+된다"는 편의보다 큽니다.
+
+**대가** — 코스를 가져오는 시점에 여행 시작일을 반드시 같이 정해야 합니다. 나중으로
+미루고 싶으면 임시 날짜를 넣고 `PATCH /trips/{tripId}`로 나중에 바꾸는 수밖에 없습니다.
+
+**영향** — PLAN-12 / `evergardenapi.yaml`의 `importSharedCourse` 요청 본문(`startDate`
+필수, `requestBody.required: true`, `400 INVALID_REQUEST` 응답 추가)
+
+---
+
+### ADR-060 · `additionalPlaceIds`는 응답에 `tripPlaceId: null`로 나타나고, 적용은 별도 오퍼레이션이 한다
+
+`autoArrangeTrip`이 `additionalPlaceIds`를 실제로 배치 계산에 반영해 `items`에
+포함시킵니다. 아직 저장된 적 없는 장소라 `tripPlaceId`가 `null`입니다.
+
+이 제안을 실제로 적용하는 건 `PUT /trips/{tripId}/places/order`가 아니라 새 오퍼레이션
+`POST /trips/{tripId}/auto-arrange/apply`가 맡습니다. 요청 본문 모양은
+`autoArrangeTrip` 응답과 똑같아서(`AutoArrangeItem` 배열) 클라이언트가 그대로 다시
+보내면 됩니다 — `tripPlaceId`가 있던 항목은 자리 이동, `null`이던 항목은 그 자리에
+새로 추가합니다.
+
+**어느 날짜에 넣을지** — 그 장소를 각 날짜에 임시로 넣어봤을 때 기존 경로에 추가되는
+거리(최적 삽입 비용)가 가장 적은 날짜로 정합니다. 동일한 날짜가 여러 개면 더 작은
+`dayNumber`를 고릅니다. 최종 순서는 그 날짜의 전체 장소(기존 + 이번에 넣어본 것)를
+다시 최적화해서 정하므로, 여기서 고른 자리는 "어느 날짜냐"만 결정하고 정확한 순서는
+아닙니다.
+
+**왜 `PUT /order`에 얹지 않았나** — `PUT /order`는 "지금 일정에 있는 장소 전부의
+자리만 바꾼다"가 계약입니다. 저장된 적 없는 항목이 섞여 들어오면 그 계약이 깨지고,
+`TripPlaceService`의 기존 검증(보낸 개수 = 현재 개수)도 다시 짜야 합니다. 별도
+오퍼레이션으로 두면 두 계약이 서로 안 부딪힙니다.
+
+**대가** — `PUT /order`만 있던 것보다 오퍼레이션이 하나 늘고, 클라이언트는 "이 응답을
+그대로 apply로 보낸다"와 "직접 순서만 바꿀 땐 order를 쓴다"를 구분해야 합니다.
+
+**영향** — PLAN-09 / `evergardenapi.yaml`의 `AutoArrangeRequest`·`AutoArrangeResult`
+스키마, 새 스키마 `AutoArrangeItem`·`AutoArrangeApplyRequest`, 새 오퍼레이션
+`POST /trips/{tripId}/auto-arrange/apply` / `TripPlaceRepository`(FK 제약이 있는
+`trip_places` 신규 추가·재배치를 한 트랜잭션으로 처리)
+
+---
+
+### ADR-061 · `getPlace`의 상세 정보는 처음 조회할 때만 콘텐츠랩에 물어서 DB에 영구 저장한다
+
+`getPlace`가 처음 불릴 때(그 장소의 `detail_synced_at`이 `null`일 때) 공통정보조회
+(`detailCommon2`)·소개정보조회(`detailIntro2`)·관광사진정보조회(`detailImage2`)를
+실시간으로 불러 `overview`·`useTime`·`restDate`·`imageUrls`를 채우고, `places`에
+그대로 영구 저장합니다. 그 뒤로는 다시 묻지 않습니다.
+
+**이유** — 명세는 원래 "짧은 TTL 캐시"를 말했지만, 이 값들(관광지 소개글·이용시간·
+사진)은 자주 바뀌는 정보가 아닙니다. 매번 다시 묻는 건 콘텐츠랩 호출 한도(기능당
+일일 1,000회)를 불필요하게 쓰는 일이고, `places` 테이블 자체가 이미 콘텐츠랩
+캐시(ADR-004)라서 한 번 받은 값을 거기 얹으면 Redis 같은 별도 캐시 저장소도
+필요 없습니다.
+
+**`useTime`/`restDate`는 관광지(12)·문화시설(14)·음식점(39) 세 타입만 채웁니다.**
+`detailIntro2`의 이용시간·휴무일 필드명이 콘텐츠타입마다 달라서(`usetime`/
+`usetimeculture`/`opentimefood` 등), 이 셋을 다른 프로젝트의 실측으로 확인했고
+(관련 PR: team-chaerok/chaerok-be#107, meomul-kyung/back#16) 나머지 다섯 타입
+(축제·여행코스·레포츠·숙박·쇼핑)은 "이용시간·휴무일"과 다른 개념(행사 기간,
+체크인 시간, 소요 시간 등)을 쓰거나 실측상 필드가 비어 있어 억지로 끼워 맞추지
+않고 `null`로 둡니다.
+
+`detailCommon2`는 `contentId` 외의 파라미터를 전부 거부합니다 — `contentTypeId`나
+`overviewYN` 같은 옵션을 붙이면 요청 자체가 거부됩니다(실전 확인).
+
+**대가** — 운영시간·소개글이 실제로 바뀌어도 자동으로 갱신되지 않습니다. 값을
+다시 받아오려면 `detail_synced_at`을 비우는 별도 작업이 필요한데, 아직 만들지
+않았습니다 — 이 정보들이 자주 바뀌지 않는다는 전제와 맞바꾼 선택입니다.
+
+**영향** — PLAN-07 / `places` 테이블에 `image_urls`·`detail_synced_at` 컬럼 추가
+(마이그레이션 V5) / `TourApiClient`의 `fetchDetailCommon`·`fetchDetailIntro`·
+`fetchDetailImages` / 새 서비스 `PlaceDetailFetchService`
+
+---
+
 ## D. 아직 정하지 못한 것
 
 명세 작성은 진행 가능하며, 해당 오퍼레이션에 `[가정]` 태그로 표시해 두었습니다.
@@ -932,6 +1022,11 @@ ADR-011이 "커서 방식을 쓴다"까지만 정하고 토큰 안에 뭘 담을
 | 개인정보 보관·파기 범위 | 30일 유예와 익명화까지는 정했습니다(ADR-054). 법령상 보관 의무 정보와 익명화 후 남길 범위가 미정입니다 (AUTH-04) | 법무 |
 
 ### 플래너 도메인에서 새로 드러난 미정 항목 (2026-09-07)
+
+| 항목 | 무엇이 걸려 있나 | 결정 주체 |
+|---|---|---|
+
+### 플래너 도메인에서 새로 드러난 미정 항목 (2026-09-18)
 
 | 항목 | 무엇이 걸려 있나 | 결정 주체 |
 |---|---|---|
