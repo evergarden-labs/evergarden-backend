@@ -9,7 +9,7 @@ public record TripUpdateRequest(
         @Size(min = 1, max = 60) String title,
         LocalDate startDate,
         LocalDate endDate,
-        List<String> regionCodes) {
+        @Size(min = 1) List<String> regionCodes) {
 
     public boolean isEmpty() {
         return title == null && startDate == null && endDate == null && regionCodes == null;

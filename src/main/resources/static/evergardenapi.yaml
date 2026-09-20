@@ -821,7 +821,9 @@ paths:
                   meta: { type: 'null' }
         '400':
           description: |
-            `INVALID_REQUEST` — 일정에 담긴 장소를 모두 보내지 않았거나 `dayNumber`가 기간을 벗어남
+            `INVALID_REQUEST` — 일정에 담긴 장소를 모두 보내지 않았거나(중복 전송으로
+            빠지는 경우 포함), `dayNumber`가 기간을 벗어나거나, 두 항목이 같은
+            `dayNumber`+`sortOrder`를 가리킴
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -833,7 +835,8 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '404':
           description: |
-            `TRIP_NOT_FOUND` · `TRIP_PLACE_NOT_FOUND`
+            `TRIP_NOT_FOUND` · `TRIP_PLACE_NOT_FOUND` — 없는 `tripPlaceId`이거나,
+            같은 `tripPlaceId`가 중복돼 다른 항목이 빠진 경우
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
