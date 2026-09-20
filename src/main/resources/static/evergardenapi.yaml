@@ -867,7 +867,8 @@ paths:
                   meta: { type: 'null' }
         '400':
           description: |
-            `INVALID_REQUEST` — `dayNumber`가 일정 기간을 벗어남
+            `INVALID_REQUEST` — `dayNumber`·`sortOrder`·`memo`를 하나도 안 보냈거나,
+            `dayNumber`가 일정 기간을 벗어남
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
