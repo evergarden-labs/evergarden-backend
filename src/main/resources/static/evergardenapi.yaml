@@ -923,7 +923,8 @@ paths:
       x-user-stories: [PLAN-08]
       description: |
         일정에 이미 담긴 장소들을 기준으로 주변 관광지를 추천합니다.
-        콘텐츠랩의 연관 관광지·위치기반 관광정보를 사용합니다.
+        `searchPlaces`와 마찬가지로 이미 동기화해 둔 `places` 테이블에서만 찾습니다 —
+        콘텐츠랩을 실시간으로 다시 부르지 않습니다.
 
         여기서 고른 장소를 일정에 넣는 것은 `POST /trips/{tripId}/places`입니다.
 
@@ -962,12 +963,6 @@ paths:
         '404':
           description: |
             `TRIP_NOT_FOUND`
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-        '503':
-          description: |
-            `TOUR_API_UNAVAILABLE` — 콘텐츠랩 장애 또는 호출 한도 초과
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -1206,8 +1201,8 @@ paths:
       x-user-stories: [PLAN-06]
       description: |
         지역이나 장소명으로 관광지를 찾습니다.
-        콘텐츠랩에서 받아 `places` 테이블에 적재한 데이터를 조회하며,
-        상세 정보는 별도로 짧은 TTL 캐시를 둡니다(ADR-004).
+        콘텐츠랩에서 미리 동기화해 둔 `places` 테이블만 조회합니다 —
+        실시간으로 콘텐츠랩을 다시 부르지 않습니다.
 
         `keyword`와 `regionCode` 중 최소 하나는 있어야 합니다.
         둘 다 없으면 전국 관광지 26만 건을 훑게 됩니다.
@@ -1250,12 +1245,6 @@ paths:
         '404':
           description: |
             `REGION_NOT_FOUND` — 존재하지 않는 지역 코드
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-        '503':
-          description: |
-            `TOUR_API_UNAVAILABLE` — 적재되지 않은 데이터를 콘텐츠랩에서 가져오는 중 장애
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
