@@ -5077,8 +5077,10 @@ components:
                   그 날 이동 거리의 합. **직선 거리 기준입니다**(ADR-043).
                   실제 도로를 따라간 거리가 아니므로 실제보다 짧게 나옵니다
         boundingBox:
-          type: object
-          description: 지도를 이 범위에 맞추면 동선 전체가 들어옵니다
+          type: [object, 'null']
+          description: |
+            지도를 이 범위에 맞추면 동선 전체가 들어옵니다.
+            일정에 담긴 장소가 하나도 없으면 null입니다
           required: [minLat, minLng, maxLat, maxLng]
           properties:
             minLat: { type: number, format: double }
