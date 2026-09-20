@@ -13,8 +13,10 @@ import com.evergarden.evergardenbackend.trip.entity.Trip;
 import com.evergarden.evergardenbackend.trip.entity.TripPlace;
 import com.evergarden.evergardenbackend.trip.repository.TripPlaceRepository;
 import com.evergarden.evergardenbackend.trip.repository.TripRepository;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -142,9 +144,14 @@ public class TripPlaceService {
         }
         Map<Long, TripPlace> byId = current.stream().collect(Collectors.toMap(TripPlace::getId, tp -> tp));
 
+        Set<Long> seenTripPlaceIds = new HashSet<>();
+        Set<String> seenSlots = new HashSet<>();
         for (TripPlaceOrderRequest.Item item : request.items()) {
-            if (!byId.containsKey(item.tripPlaceId())) {
+            if (!byId.containsKey(item.tripPlaceId()) || !seenTripPlaceIds.add(item.tripPlaceId())) {
                 throw new BusinessException(ErrorCode.TRIP_PLACE_NOT_FOUND);
+            }
+            if (!seenSlots.add(item.dayNumber() + "-" + item.sortOrder())) {
+                throw new BusinessException(ErrorCode.INVALID_REQUEST);
             }
             validateDayNumber(trip, item.dayNumber());
         }

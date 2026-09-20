@@ -220,6 +220,34 @@ class TripPlaceServiceTest {
     }
 
     @Test
+    @DisplayName("같은 tripPlaceId가 중복되면(다른 항목이 빠진 것) TRIP_PLACE_NOT_FOUND")
+    void 재배열_중복항목포함() {
+        given(tripPlaceRepository.findByTripOrderByDayNumberAscSortOrderAsc(trip))
+                .willReturn(List.of(tripPlace(101L, (short) 1, (short) 1), tripPlace(102L, (short) 1, (short) 2)));
+        TripPlaceOrderRequest request = new TripPlaceOrderRequest(List.of(
+                new TripPlaceOrderRequest.Item(101L, (short) 1, (short) 1),
+                new TripPlaceOrderRequest.Item(101L, (short) 1, (short) 2)));
+
+        assertThatThrownBy(() -> tripPlaceService.replaceOrder(USER_ID, 10L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.TRIP_PLACE_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("두 항목이 같은 day+sortOrder를 가리키면 INVALID_REQUEST")
+    void 재배열_자리충돌() {
+        given(tripPlaceRepository.findByTripOrderByDayNumberAscSortOrderAsc(trip))
+                .willReturn(List.of(tripPlace(101L, (short) 1, (short) 1), tripPlace(102L, (short) 1, (short) 2)));
+        TripPlaceOrderRequest request = new TripPlaceOrderRequest(List.of(
+                new TripPlaceOrderRequest.Item(101L, (short) 1, (short) 1),
+                new TripPlaceOrderRequest.Item(102L, (short) 1, (short) 1)));
+
+        assertThatThrownBy(() -> tripPlaceService.replaceOrder(USER_ID, 10L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_REQUEST);
+    }
+
+    @Test
     @DisplayName("정상 재배열은 요청한 자리로 맞바꾸고 상세를 돌려준다")
     void 재배열_정상_맞바꾸기() {
         TripPlace a = tripPlace(101L, (short) 1, (short) 1);
