@@ -121,6 +121,17 @@ public class PostService {
         return toDetail(post, userId);
     }
 
+    /**
+     * 게시물을 지운다(COMM-06). 행을 지우지 않고 {@code status}만 바꾼다(ADR-007) —
+     * 댓글이 달린 글을 물리 삭제하면 남의 기록까지 사라진다. 공유했던 코스·아카이브는
+     * 건드리지 않는다 — 공유를 거둘 뿐 원본은 그대로다.
+     */
+    public void delete(Long userId, Long postId) {
+        Post post = findActivePost(postId);
+        postAccessGuard.checkOwner(post, userId);
+        post.delete();
+    }
+
     private Post findActivePost(Long postId) {
         return postRepository.findById(postId)
                 .filter(p -> !p.isDeleted())
