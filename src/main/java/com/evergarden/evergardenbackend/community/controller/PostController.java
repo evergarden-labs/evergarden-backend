@@ -2,12 +2,15 @@ package com.evergarden.evergardenbackend.community.controller;
 
 import com.evergarden.evergardenbackend.community.dto.PostCreateRequest;
 import com.evergarden.evergardenbackend.community.dto.PostDetail;
+import com.evergarden.evergardenbackend.community.dto.PostUpdateRequest;
 import com.evergarden.evergardenbackend.community.service.PostService;
 import com.evergarden.evergardenbackend.global.response.ApiResponse;
 import com.evergarden.evergardenbackend.global.security.AuthPrincipal;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -26,5 +29,13 @@ public class PostController {
             @AuthenticationPrincipal AuthPrincipal me,
             @Valid @RequestBody PostCreateRequest request) {
         return ApiResponse.of(postService.create(me.userId(), request));
+    }
+
+    @PatchMapping("/{postId}")
+    public ApiResponse<PostDetail> update(
+            @AuthenticationPrincipal AuthPrincipal me,
+            @PathVariable Long postId,
+            @Valid @RequestBody PostUpdateRequest request) {
+        return ApiResponse.of(postService.update(me.userId(), postId, request));
     }
 }
