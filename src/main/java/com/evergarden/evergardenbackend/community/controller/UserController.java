@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/** COMM-08 이하. 명세: {@code evergardenapi.yaml}의 {@code /users}. */
+/** COMM-08·09 이하. 명세: {@code evergardenapi.yaml}의 {@code /users}. */
 @RestController
 @RequestMapping("/users")
 @RequiredArgsConstructor
@@ -33,6 +33,15 @@ public class UserController {
             @RequestParam(defaultValue = "1") @Min(1) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
         Page<PostSummary> result = postService.listMyLikedPosts(me.userId(), PageRequest.of(page - 1, size));
+        return ApiResponse.of(result.getContent(), PageMeta.from(result));
+    }
+
+    @GetMapping("/me/posts")
+    public ApiResponse<List<PostSummary>> myPosts(
+            @AuthenticationPrincipal AuthPrincipal me,
+            @RequestParam(defaultValue = "1") @Min(1) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
+        Page<PostSummary> result = postService.listMyPosts(me.userId(), PageRequest.of(page - 1, size));
         return ApiResponse.of(result.getContent(), PageMeta.from(result));
     }
 }
