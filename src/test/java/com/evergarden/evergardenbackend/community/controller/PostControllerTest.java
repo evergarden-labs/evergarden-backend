@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.evergarden.evergardenbackend.community.dto.LikeResult;
 import com.evergarden.evergardenbackend.community.dto.PostDetail;
 import com.evergarden.evergardenbackend.community.service.PostService;
 import com.evergarden.evergardenbackend.global.config.SecurityConfig;
@@ -200,5 +201,49 @@ class PostControllerTest {
         mvc.perform(delete("/posts/5").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").doesNotExist());
+    }
+
+    // ── 좋아요(COMM-07·19) ───────────────────────────────────
+
+    @Test
+    @DisplayName("중복 좋아요는 서비스의 409가 그대로 전달된다")
+    void 좋아요_중복() throws Exception {
+        given(postService.like(1L, 5L)).willThrow(new BusinessException(ErrorCode.ALREADY_LIKED));
+
+        mvc.perform(post("/posts/5/like").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("ALREADY_LIKED"));
+    }
+
+    @Test
+    @DisplayName("정상 좋아요는 로그인한 사용자 ID로 서비스에 위임한다")
+    void 좋아요_정상() throws Exception {
+        given(postService.like(1L, 5L)).willReturn(new LikeResult(5L, 1, true));
+
+        mvc.perform(post("/posts/5/like").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.likeCount").value(1))
+                .andExpect(jsonPath("$.data.likedByMe").value(true));
+    }
+
+    @Test
+    @DisplayName("좋아요하지 않은 걸 취소하면 서비스의 409가 그대로 전달된다")
+    void 좋아요취소_안한것() throws Exception {
+        given(postService.unlike(1L, 5L)).willThrow(new BusinessException(ErrorCode.NOT_LIKED));
+
+        mvc.perform(delete("/posts/5/like").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("NOT_LIKED"));
+    }
+
+    @Test
+    @DisplayName("정상 취소는 로그인한 사용자 ID로 서비스에 위임한다")
+    void 좋아요취소_정상() throws Exception {
+        given(postService.unlike(1L, 5L)).willReturn(new LikeResult(5L, 0, false));
+
+        mvc.perform(delete("/posts/5/like").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.likeCount").value(0))
+                .andExpect(jsonPath("$.data.likedByMe").value(false));
     }
 }

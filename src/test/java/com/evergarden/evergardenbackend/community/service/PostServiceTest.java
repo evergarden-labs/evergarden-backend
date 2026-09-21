@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -16,13 +17,17 @@ import com.evergarden.evergardenbackend.archive.repository.ArchiveItemRepository
 import com.evergarden.evergardenbackend.archive.repository.ArchiveRepository;
 import com.evergarden.evergardenbackend.archive.service.ArchiveAccessGuard;
 import com.evergarden.evergardenbackend.archive.service.ArchiveMapper;
+import com.evergarden.evergardenbackend.community.dto.LikeResult;
 import com.evergarden.evergardenbackend.community.dto.PostCreateRequest;
 import com.evergarden.evergardenbackend.community.dto.PostDetail;
+import com.evergarden.evergardenbackend.community.dto.PostSummary;
 import com.evergarden.evergardenbackend.community.dto.PostUpdateRequest;
 import com.evergarden.evergardenbackend.community.entity.Post;
+import com.evergarden.evergardenbackend.community.entity.PostLike;
 import com.evergarden.evergardenbackend.community.entity.PostRegion;
 import com.evergarden.evergardenbackend.community.entity.RegionSource;
 import com.evergarden.evergardenbackend.community.entity.ShareType;
+import com.evergarden.evergardenbackend.community.repository.PostLikeRepository;
 import com.evergarden.evergardenbackend.community.repository.PostRegionRepository;
 import com.evergarden.evergardenbackend.community.repository.PostRepository;
 import com.evergarden.evergardenbackend.global.exception.BusinessException;
@@ -51,6 +56,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.data.domain.Page;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /** 게시물 작성(COMM-04)의 공유 대상·지역 스냅샷 검증 순서를 확인한다. */
@@ -60,6 +66,7 @@ class PostServiceTest {
 
     private final PostRepository postRepository = mock(PostRepository.class);
     private final PostRegionRepository postRegionRepository = mock(PostRegionRepository.class);
+    private final PostLikeRepository postLikeRepository = mock(PostLikeRepository.class);
     private final TripRepository tripRepository = mock(TripRepository.class);
     private final ArchiveRepository archiveRepository = mock(ArchiveRepository.class);
     private final TripRegionRepository tripRegionRepository = mock(TripRegionRepository.class);
@@ -76,9 +83,9 @@ class PostServiceTest {
     private final PostMapper postMapper = new PostMapper();
 
     private final PostService postService = new PostService(
-            postRepository, postRegionRepository, tripRepository, archiveRepository, tripRegionRepository,
-            tripPlaceRepository, archiveItemRepository, regionRepository, userRepository, tripAccessGuard,
-            archiveAccessGuard, postAccessGuard, tripMapper, archiveMapper, postMapper, mediaMapper);
+            postRepository, postRegionRepository, postLikeRepository, tripRepository, archiveRepository,
+            tripRegionRepository, tripPlaceRepository, archiveItemRepository, regionRepository, userRepository,
+            tripAccessGuard, archiveAccessGuard, postAccessGuard, tripMapper, archiveMapper, postMapper, mediaMapper);
 
     private User author;
 
@@ -449,5 +456,85 @@ class PostServiceTest {
 
         assertThat(post.isDeleted()).isTrue();
         verify(postRepository, never()).delete(any());
+    }
+
+    // ── 좋아요(COMM-07·08·19) ────────────────────────────────
+
+    @Test
+    @DisplayName("없는 게시물에 좋아요하면 POST_NOT_FOUND")
+    void 좋아요_없는게시물() {
+        given(postRepository.findById(99L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> postService.like(USER_ID, 99L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.POST_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("이미 좋아요한 게시물이면 DB 제약 위반을 ALREADY_LIKED로 바꾼다")
+    void 좋아요_중복() {
+        Post post = post(5L);
+        given(postRepository.findById(5L)).willReturn(Optional.of(post));
+        given(postLikeRepository.saveAndFlush(any())).willThrow(new org.springframework.dao.DataIntegrityViolationException("dup"));
+
+        assertThatThrownBy(() -> postService.like(USER_ID, 5L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.ALREADY_LIKED);
+        assertThat(post.getLikeCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("정상 좋아요는 좋아요 수를 늘리고 likedByMe=true를 돌려준다")
+    void 좋아요_정상() {
+        Post post = post(5L);
+        given(postRepository.findById(5L)).willReturn(Optional.of(post));
+
+        LikeResult result = postService.like(USER_ID, 5L);
+
+        assertThat(result.likeCount()).isEqualTo(1);
+        assertThat(result.likedByMe()).isTrue();
+        assertThat(post.getLikeCount()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("좋아요하지 않은 게시물을 취소하면 NOT_LIKED")
+    void 좋아요취소_안한것() {
+        Post post = post(5L);
+        given(postRepository.findById(5L)).willReturn(Optional.of(post));
+        given(postLikeRepository.existsById(any())).willReturn(false);
+
+        assertThatThrownBy(() -> postService.unlike(USER_ID, 5L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.NOT_LIKED);
+    }
+
+    @Test
+    @DisplayName("정상 취소는 좋아요 수를 줄이고 likedByMe=false를 돌려준다")
+    void 좋아요취소_정상() {
+        Post post = post(5L);
+        ReflectionTestUtils.setField(post, "likeCount", 1);
+        given(postRepository.findById(5L)).willReturn(Optional.of(post));
+        given(postLikeRepository.existsById(any())).willReturn(true);
+
+        LikeResult result = postService.unlike(USER_ID, 5L);
+
+        assertThat(result.likeCount()).isZero();
+        assertThat(result.likedByMe()).isFalse();
+        verify(postLikeRepository).deleteById(any());
+    }
+
+    @Test
+    @DisplayName("내 좋아요 목록은 최근 순으로 요약을 돌려준다")
+    void 좋아요목록_조회() {
+        Post post = post(5L);
+        PostLike postLike = new PostLike(post, author);
+        given(postLikeRepository.findActiveLikedByUser(eq(USER_ID), any()))
+                .willReturn(new org.springframework.data.domain.PageImpl<>(List.of(postLike)));
+        given(postRegionRepository.findByPost(post)).willReturn(List.of());
+
+        Page<PostSummary> result = postService.listMyLikedPosts(USER_ID, org.springframework.data.domain.PageRequest.of(0, 20));
+
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).postId()).isEqualTo(5L);
     }
 }
