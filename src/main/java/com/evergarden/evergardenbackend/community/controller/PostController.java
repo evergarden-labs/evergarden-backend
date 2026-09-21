@@ -1,5 +1,6 @@
 package com.evergarden.evergardenbackend.community.controller;
 
+import com.evergarden.evergardenbackend.community.dto.LikeResult;
 import com.evergarden.evergardenbackend.community.dto.PostCreateRequest;
 import com.evergarden.evergardenbackend.community.dto.PostDetail;
 import com.evergarden.evergardenbackend.community.dto.PostUpdateRequest;
@@ -54,5 +55,19 @@ public class PostController {
             @PathVariable Long postId) {
         postService.delete(me.userId(), postId);
         return ApiResponse.empty();
+    }
+
+    @PostMapping("/{postId}/like")
+    public ApiResponse<LikeResult> like(
+            @AuthenticationPrincipal AuthPrincipal me,
+            @PathVariable Long postId) {
+        return ApiResponse.of(postService.like(me.userId(), postId));
+    }
+
+    @DeleteMapping("/{postId}/like")
+    public ApiResponse<LikeResult> unlike(
+            @AuthenticationPrincipal AuthPrincipal me,
+            @PathVariable Long postId) {
+        return ApiResponse.of(postService.unlike(me.userId(), postId));
     }
 }
