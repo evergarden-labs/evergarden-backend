@@ -11,9 +11,13 @@ import com.evergarden.evergardenbackend.community.entity.ShareType;
 import com.evergarden.evergardenbackend.community.repository.PostRepository;
 import com.evergarden.evergardenbackend.global.security.JwtTokenProvider;
 import com.evergarden.evergardenbackend.global.security.Role;
+import com.evergarden.evergardenbackend.place.entity.RegionLevel;
+import com.evergarden.evergardenbackend.place.repository.RegionRepository;
 import com.evergarden.evergardenbackend.support.IntegrationTest;
 import com.evergarden.evergardenbackend.user.entity.User;
 import com.evergarden.evergardenbackend.user.repository.UserRepository;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -39,6 +43,7 @@ class CommunityIntegrationTest extends IntegrationTest {
     @Autowired JwtTokenProvider tokenProvider;
     @Autowired UserRepository userRepository;
     @Autowired PostRepository postRepository;
+    @Autowired RegionRepository regionRepository;
 
     User author;
     User other;
@@ -51,6 +56,10 @@ class CommunityIntegrationTest extends IntegrationTest {
         other = userRepository.save(User.builder().nickname("이웃").build());
         authorToken = tokenProvider.issueAccessToken(author.getId(), Role.USER);
         otherToken = tokenProvider.issueAccessToken(other.getId(), Role.USER);
+
+        regionRepository.save(com.evergarden.evergardenbackend.place.entity.Region.builder()
+                .code("11").level(RegionLevel.SIDO).name("서울특별시")
+                .centerLat(BigDecimal.ZERO).centerLng(BigDecimal.ZERO).syncedAt(LocalDateTime.now()).build());
     }
 
     @Test
