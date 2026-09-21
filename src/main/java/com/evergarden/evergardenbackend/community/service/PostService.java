@@ -10,6 +10,7 @@ import com.evergarden.evergardenbackend.archive.service.ArchiveMapper;
 import com.evergarden.evergardenbackend.community.dto.LikeResult;
 import com.evergarden.evergardenbackend.community.dto.PostCreateRequest;
 import com.evergarden.evergardenbackend.community.dto.PostDetail;
+import com.evergarden.evergardenbackend.community.dto.PostSortType;
 import com.evergarden.evergardenbackend.community.dto.PostSummary;
 import com.evergarden.evergardenbackend.community.dto.PostUpdateRequest;
 import com.evergarden.evergardenbackend.community.entity.Post;
@@ -24,6 +25,9 @@ import com.evergarden.evergardenbackend.community.repository.PostRegionRepositor
 import com.evergarden.evergardenbackend.community.repository.PostRepository;
 import com.evergarden.evergardenbackend.global.exception.BusinessException;
 import com.evergarden.evergardenbackend.global.exception.ErrorCode;
+import com.evergarden.evergardenbackend.global.response.CursorMeta;
+import com.evergarden.evergardenbackend.global.response.CursorPage;
+import com.evergarden.evergardenbackend.global.util.CursorCodec;
 import com.evergarden.evergardenbackend.media.dto.MediaResponse;
 import com.evergarden.evergardenbackend.media.service.MediaMapper;
 import com.evergarden.evergardenbackend.place.entity.Region;
@@ -38,13 +42,17 @@ import com.evergarden.evergardenbackend.trip.repository.TripRepository;
 import com.evergarden.evergardenbackend.trip.service.TripAccessGuard;
 import com.evergarden.evergardenbackend.trip.service.TripMapper;
 import com.evergarden.evergardenbackend.user.repository.UserRepository;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -196,6 +204,80 @@ public class PostService {
     public Page<PostSummary> listMyPosts(Long userId, Pageable pageable) {
         return postRepository.findByAuthor_IdAndStatusOrderByCreatedAtDesc(userId, PostStatus.ACTIVE, pageable)
                 .map(post -> toSummary(post, userId));
+    }
+
+    /** 커뮤니티 전체 피드(COMM-01). */
+    @Transactional(readOnly = true)
+    public CursorPage<PostSummary> listPosts(Long viewerId, PostSortType sort, String cursor, int size) {
+        return list(viewerId, null, sort, cursor, size);
+    }
+
+    /**
+     * 지역별 피드(COMM-02). 코스에 포함됐거나 게시물에 직접 지정된 지역이 대상이고,
+     * 판정은 {@code post_regions} 스냅샷으로 한다(ADR-003) — 원본 코스가 삭제돼도
+     * 이 피드에서 사라지지 않는다.
+     */
+    @Transactional(readOnly = true)
+    public CursorPage<PostSummary> listRegionPosts(Long viewerId, String regionCode, PostSortType sort,
+                                                    String cursor, int size) {
+        regionRepository.findById(regionCode)
+                .orElseThrow(() -> new BusinessException(ErrorCode.REGION_NOT_FOUND));
+        return list(viewerId, regionCode, sort, cursor, size);
+    }
+
+    private static final int POPULAR_WINDOW_DAYS = 30;
+
+    private CursorPage<PostSummary> list(Long viewerId, String regionCode, PostSortType sort, String cursor, int size) {
+        boolean popular = sort == PostSortType.POPULAR;
+        List<Post> fetched = popular ? fetchPopular(regionCode, cursor, size) : fetchLatest(regionCode, cursor, size);
+
+        boolean hasNext = fetched.size() > size;
+        List<Post> page = hasNext ? fetched.subList(0, size) : fetched;
+        List<PostSummary> summaries = page.stream().map(post -> toSummary(post, viewerId)).toList();
+
+        CursorMeta meta = !hasNext ? CursorMeta.last()
+                : popular ? CursorMeta.of(encodePopularCursor(page.get(page.size() - 1)))
+                          : CursorMeta.of(CursorCodec.encode(page.get(page.size() - 1).getId()));
+        return new CursorPage<>(summaries, meta);
+    }
+
+    private List<Post> fetchLatest(String regionCode, String cursor, int size) {
+        Long cursorId = CursorCodec.decode(cursor);
+        return postRepository.findLatest(regionCode, cursorId, PageRequest.of(0, size + 1));
+    }
+
+    private List<Post> fetchPopular(String regionCode, String cursor, int size) {
+        PopularCursor decoded = decodePopularCursor(cursor);
+        LocalDateTime since = LocalDateTime.now().minusDays(POPULAR_WINDOW_DAYS);
+        Integer cursorLikeCount = decoded == null ? null : decoded.likeCount();
+        Long cursorId = decoded == null ? null : decoded.id();
+        return postRepository.findPopular(regionCode, since, cursorLikeCount, cursorId, PageRequest.of(0, size + 1));
+    }
+
+    /**
+     * 인기 피드 커서. {@code (likeCount, id)} 두 값을 같이 실어야 한다 — 정렬 기준과
+     * 다른 값 하나만 커서로 쓰면 좋아요 수가 같은 게시물들 사이에서 항목이
+     * 통째로 빠질 수 있다(키셋 페이지네이션의 일반적 함정).
+     */
+    private record PopularCursor(int likeCount, Long id) {
+    }
+
+    private String encodePopularCursor(Post post) {
+        String raw = post.getLikeCount() + "_" + post.getId();
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(raw.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private PopularCursor decodePopularCursor(String cursor) {
+        if (cursor == null) {
+            return null;
+        }
+        try {
+            String raw = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
+            String[] parts = raw.split("_", 2);
+            return new PopularCursor(Integer.parseInt(parts[0]), Long.valueOf(parts[1]));
+        } catch (RuntimeException e) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST);
+        }
     }
 
     private Post findActivePost(Long postId) {
