@@ -134,6 +134,20 @@ class CommentServiceTest {
     }
 
     @Test
+    @DisplayName("실은 대댓글인 id로 updateComment를 부르면 COMMENT_NOT_FOUND — 경로가 서로 안 통한다")
+    void 수정_대댓글id로_댓글수정시도() {
+        Comment parentComment = comment(10L);
+        Comment reply = Comment.replyTo(parentComment, author, "답글");
+        ReflectionTestUtils.setField(reply, "id", 11L);
+        given(commentRepository.findById(11L)).willReturn(Optional.of(reply));
+        CommentWriteRequest request = new CommentWriteRequest("고친 내용");
+
+        assertThatThrownBy(() -> commentService.update(USER_ID, 11L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.COMMENT_NOT_FOUND);
+    }
+
+    @Test
     @DisplayName("남의 댓글을 수정하면 403 — 댓글 접근가드에 위임한다")
     void 수정_남의댓글() {
         Comment comment = comment(10L);
@@ -173,6 +187,19 @@ class CommentServiceTest {
         given(commentRepository.findById(99L)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> commentService.delete(USER_ID, 99L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.COMMENT_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("실은 대댓글인 id로 deleteComment를 부르면 COMMENT_NOT_FOUND")
+    void 삭제_대댓글id로_댓글삭제시도() {
+        Comment parentComment = comment(10L);
+        Comment reply = Comment.replyTo(parentComment, author, "답글");
+        ReflectionTestUtils.setField(reply, "id", 11L);
+        given(commentRepository.findById(11L)).willReturn(Optional.of(reply));
+
+        assertThatThrownBy(() -> commentService.delete(USER_ID, 11L))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.COMMENT_NOT_FOUND);
     }
@@ -250,6 +277,29 @@ class CommentServiceTest {
     }
 
     // ── 대댓글 수정·삭제(COMM-15·16) ─────────────────────────
+
+    @Test
+    @DisplayName("실은 최상위 댓글인 id로 updateReply를 부르면 COMMENT_NOT_FOUND — parent가 없어 NPE 나던 걸 막는다")
+    void 답글수정_댓글id로_답글수정시도() {
+        Comment comment = comment(10L);
+        given(commentRepository.findById(10L)).willReturn(Optional.of(comment));
+        CommentWriteRequest request = new CommentWriteRequest("고친 답글");
+
+        assertThatThrownBy(() -> commentService.updateReply(USER_ID, 10L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.COMMENT_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("실은 최상위 댓글인 id로 deleteReply를 부르면 COMMENT_NOT_FOUND — commentCount가 잘못 줄어드는 걸 막는다")
+    void 답글삭제_댓글id로_답글삭제시도() {
+        Comment comment = comment(10L);
+        given(commentRepository.findById(10L)).willReturn(Optional.of(comment));
+
+        assertThatThrownBy(() -> commentService.deleteReply(USER_ID, 10L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.COMMENT_NOT_FOUND);
+    }
 
     @Test
     @DisplayName("남의 답글을 수정하면 403 — 댓글 접근가드에 위임한다(댓글과 같은 저장소)")

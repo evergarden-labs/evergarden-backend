@@ -78,9 +78,12 @@ public class CommentService {
         return commentMapper.toResponse(comment, 0, List.of());
     }
 
-    /** 댓글 본문을 고친다(COMM-12). */
+    /**
+     * 댓글 본문을 고친다(COMM-12). {@code commentId}가 실은 대댓글이면 {@code COMMENT_NOT_FOUND}다 —
+     * 경로가 나뉘어 있는 이상 서로의 자리에서 통해서는 안 된다(아래 {@link #findActiveTopLevelComment} 참고).
+     */
     public CommentResponse update(Long userId, Long commentId, CommentWriteRequest request) {
-        return toResponse(updateContent(userId, commentId, request));
+        return toResponse(updateContent(findActiveTopLevelComment(commentId), userId, request));
     }
 
     /**
@@ -89,7 +92,7 @@ public class CommentService {
      * 댓글입니다"로 계속 보이므로, 게시물의 {@code commentCount}는 건드리지 않는다.
      */
     public void delete(Long userId, Long commentId) {
-        deactivate(userId, commentId);
+        deactivate(findActiveTopLevelComment(commentId), userId);
     }
 
     /**
@@ -109,33 +112,39 @@ public class CommentService {
         return commentMapper.toReply(reply);
     }
 
-    /** 대댓글 본문을 고친다(COMM-15). 저장소·검증 로직은 댓글과 같다. */
+    /**
+     * 대댓글 본문을 고친다(COMM-15). 저장소·검증 로직은 댓글과 같지만, {@code replyId}가
+     * 실은 최상위 댓글이면 {@code COMMENT_NOT_FOUND}다 — {@link CommentMapper#toReply}가
+     * {@code parent}를 그대로 읽는데 최상위 댓글은 {@code parent}가 없어서 여기서
+     * 안 막으면 {@code NullPointerException}으로 터진다(실전에서 확인).
+     */
     public Reply updateReply(Long userId, Long replyId, CommentWriteRequest request) {
-        return commentMapper.toReply(updateContent(userId, replyId, request));
+        return commentMapper.toReply(updateContent(findActiveReply(replyId), userId, request));
     }
 
     /**
      * 대댓글을 지운다(COMM-16). 댓글과 달리 목록에서 완전히 빠진다 — 아래에 달릴 것이
      * 없어 자리를 남길 이유가 없어서다. 화면에서 사라지는 만큼, 게시물의
      * {@code commentCount}(대댓글 포함 수)도 같이 줄인다.
+     *
+     * <p>{@code replyId}가 실은 최상위 댓글이면 {@code COMMENT_NOT_FOUND}다 — 안 막으면
+     * 자리를 남겨야 할 댓글이 목록에서 사라지고 카운트까지 잘못 줄어든다.
      */
     public void deleteReply(Long userId, Long replyId) {
-        Comment reply = deactivate(userId, replyId);
+        Comment reply = findActiveReply(replyId);
+        deactivate(reply, userId);
         reply.getPost().decreaseCommentCount();
     }
 
-    private Comment updateContent(Long userId, Long commentId, CommentWriteRequest request) {
-        Comment comment = findActiveComment(commentId);
+    private Comment updateContent(Comment comment, Long userId, CommentWriteRequest request) {
         commentAccessGuard.checkOwner(comment, userId);
         comment.updateContent(request.content());
         return comment;
     }
 
-    private Comment deactivate(Long userId, Long commentId) {
-        Comment comment = findActiveComment(commentId);
+    private void deactivate(Comment comment, Long userId) {
         commentAccessGuard.checkOwner(comment, userId);
         comment.delete();
-        return comment;
     }
 
     private Post findActivePost(Long postId) {
@@ -150,12 +159,35 @@ public class CommentService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.COMMENT_NOT_FOUND));
     }
 
+    /** {@code updateComment}/{@code deleteComment} 전용 — 대댓글 id가 오면 거부한다. */
+    private Comment findActiveTopLevelComment(Long commentId) {
+        Comment comment = findActiveComment(commentId);
+        if (comment.isReply()) {
+            throw new BusinessException(ErrorCode.COMMENT_NOT_FOUND);
+        }
+        return comment;
+    }
+
+    /** {@code updateReply}/{@code deleteReply} 전용 — 최상위 댓글 id가 오면 거부한다. */
+    private Comment findActiveReply(Long replyId) {
+        Comment comment = findActiveComment(replyId);
+        if (!comment.isReply()) {
+            throw new BusinessException(ErrorCode.COMMENT_NOT_FOUND);
+        }
+        return comment;
+    }
+
     /** 삭제 여부를 안 가린다 — {@code listReplies}처럼 삭제된 댓글도 존재만 하면 되는 곳에 쓴다. */
     private Comment findComment(Long commentId) {
         return commentRepository.findById(commentId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.COMMENT_NOT_FOUND));
     }
 
+    /**
+     * 댓글 하나마다 대댓글 수·미리보기를 각각 조회한다 — {@code listComments} 한 페이지에서
+     * 댓글 수만큼 쿼리가 늘어난다. {@code PostService.toSummary()}와 같은 이유로
+     * 개인 규모에서는 괜찮지만, 댓글이 아주 많아지면 그때 다시 봐야 한다.
+     */
     private CommentResponse toResponse(Comment comment) {
         int replyCount = (int) commentRepository.countByParentAndStatus(comment, CommentStatus.ACTIVE);
         List<Reply> repliesPreview = commentRepository
