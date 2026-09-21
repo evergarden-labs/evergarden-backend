@@ -9,9 +9,13 @@ import com.evergarden.evergardenbackend.community.repository.CommentRepository;
 import com.evergarden.evergardenbackend.community.repository.PostRepository;
 import com.evergarden.evergardenbackend.global.exception.BusinessException;
 import com.evergarden.evergardenbackend.global.exception.ErrorCode;
+import com.evergarden.evergardenbackend.global.response.CursorMeta;
+import com.evergarden.evergardenbackend.global.response.CursorPage;
+import com.evergarden.evergardenbackend.global.util.CursorCodec;
 import com.evergarden.evergardenbackend.user.repository.UserRepository;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +30,41 @@ public class CommentService {
     private final UserRepository userRepository;
     private final CommentAccessGuard commentAccessGuard;
     private final CommentMapper commentMapper;
+
+    /** 게시물의 최상위 댓글을 작성 순서로(COMM-03). 대댓글은 앞의 몇 개만 미리 담긴다. */
+    @Transactional(readOnly = true)
+    public CursorPage<CommentResponse> listComments(Long postId, String cursor, int size) {
+        Post post = findActivePost(postId);
+        Long cursorId = CursorCodec.decode(cursor);
+        List<Comment> fetched = commentRepository.findTopLevelAfter(post, cursorId, PageRequest.of(0, size + 1));
+
+        boolean hasNext = fetched.size() > size;
+        List<Comment> page = hasNext ? fetched.subList(0, size) : fetched;
+        List<CommentResponse> responses = page.stream().map(this::toResponse).toList();
+
+        return new CursorPage<>(responses, nextCursor(page, hasNext));
+    }
+
+    /**
+     * 댓글의 대댓글을 작성 순서로(COMM-03). 부모 댓글이 삭제됐어도 대댓글은 그대로 보여야
+     * 해서(ADR-007) {@code findActiveComment}가 아니라 존재 여부만 확인한다.
+     */
+    @Transactional(readOnly = true)
+    public CursorPage<Reply> listReplies(Long parentCommentId, String cursor, int size) {
+        Comment parent = findComment(parentCommentId);
+        Long cursorId = CursorCodec.decode(cursor);
+        List<Comment> fetched = commentRepository.findRepliesAfter(parent, cursorId, PageRequest.of(0, size + 1));
+
+        boolean hasNext = fetched.size() > size;
+        List<Comment> page = hasNext ? fetched.subList(0, size) : fetched;
+        List<Reply> replies = page.stream().map(commentMapper::toReply).toList();
+
+        return new CursorPage<>(replies, nextCursor(page, hasNext));
+    }
+
+    private CursorMeta nextCursor(List<Comment> page, boolean hasNext) {
+        return hasNext ? CursorMeta.of(CursorCodec.encode(page.get(page.size() - 1).getId())) : CursorMeta.last();
+    }
 
     /** 게시물에 댓글을 단다(COMM-11). */
     public CommentResponse create(Long userId, Long postId, CommentWriteRequest request) {
@@ -101,6 +140,12 @@ public class CommentService {
     private Comment findActiveComment(Long commentId) {
         return commentRepository.findById(commentId)
                 .filter(c -> !c.isDeleted())
+                .orElseThrow(() -> new BusinessException(ErrorCode.COMMENT_NOT_FOUND));
+    }
+
+    /** 삭제 여부를 안 가린다 — {@code listReplies}처럼 삭제된 댓글도 존재만 하면 되는 곳에 쓴다. */
+    private Comment findComment(Long commentId) {
+        return commentRepository.findById(commentId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.COMMENT_NOT_FOUND));
     }
 
