@@ -25,6 +25,7 @@ import com.evergarden.evergardenbackend.community.dto.PostUpdateRequest;
 import com.evergarden.evergardenbackend.community.entity.Post;
 import com.evergarden.evergardenbackend.community.entity.PostLike;
 import com.evergarden.evergardenbackend.community.entity.PostRegion;
+import com.evergarden.evergardenbackend.community.entity.PostStatus;
 import com.evergarden.evergardenbackend.community.entity.RegionSource;
 import com.evergarden.evergardenbackend.community.entity.ShareType;
 import com.evergarden.evergardenbackend.community.repository.PostLikeRepository;
@@ -533,6 +534,20 @@ class PostServiceTest {
         given(postRegionRepository.findByPost(post)).willReturn(List.of());
 
         Page<PostSummary> result = postService.listMyLikedPosts(USER_ID, org.springframework.data.domain.PageRequest.of(0, 20));
+
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).postId()).isEqualTo(5L);
+    }
+
+    @Test
+    @DisplayName("내 게시물 목록은 최신순으로 요약을 돌려준다")
+    void 내게시물목록_조회() {
+        Post post = post(5L);
+        given(postRepository.findByAuthor_IdAndStatusOrderByCreatedAtDesc(eq(USER_ID), eq(PostStatus.ACTIVE), any()))
+                .willReturn(new org.springframework.data.domain.PageImpl<>(List.of(post)));
+        given(postRegionRepository.findByPost(post)).willReturn(List.of());
+
+        Page<PostSummary> result = postService.listMyPosts(USER_ID, org.springframework.data.domain.PageRequest.of(0, 20));
 
         assertThat(result.getContent()).hasSize(1);
         assertThat(result.getContent().get(0).postId()).isEqualTo(5L);

@@ -80,4 +80,23 @@ class UserControllerTest {
         mvc.perform(get("/users/me/likes"))
                 .andExpect(status().isUnauthorized());
     }
+
+    @Test
+    @DisplayName("내 게시물 목록은 로그인한 사용자 ID로 서비스에 위임한다")
+    void 내게시물목록_조회() throws Exception {
+        given(postService.listMyPosts(eq(1L), any()))
+                .willReturn(new PageImpl<>(List.of(org.mockito.Mockito.mock(PostSummary.class))));
+
+        mvc.perform(get("/users/me/posts").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isArray());
+    }
+
+    @Test
+    @DisplayName("내 게시물 목록도 size가 50을 넘으면 INVALID_REQUEST")
+    void 내게시물목록_크기초과() throws Exception {
+        mvc.perform(get("/users/me/posts?size=51").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+    }
 }
