@@ -3,6 +3,7 @@ package com.evergarden.evergardenbackend.notification.entity;
 import com.evergarden.evergardenbackend.user.entity.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
@@ -18,11 +19,20 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
-/** 받은 알림(NOTI-01). 앱 내 알림만 있고 푸시는 아직 없다. */
+/**
+ * 받은 알림(NOTI-01). 앱 내 알림만 있고 푸시는 아직 없다.
+ *
+ * <p>{@code BaseTimeEntity}를 상속하지 않고 {@code createdAt}만 직접 두지만,
+ * {@code @CreatedDate}가 실제로 채워지려면 {@link AuditingEntityListener}가
+ * 있어야 한다 — 빠지면 항상 null로 저장을 시도해 {@code NOT NULL} 제약에
+ * 매번 걸린다({@code PostLike}에서 실전 확인).
+ */
 @Entity
 @Getter
 @Table(name = "notifications")
+@EntityListeners(AuditingEntityListener.class)
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Notification {
 

@@ -4,6 +4,7 @@ import com.evergarden.evergardenbackend.place.entity.Region;
 import com.evergarden.evergardenbackend.user.entity.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -18,6 +19,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 /**
  * 지역 방문 인증 기록(MAP-01).
@@ -27,10 +29,16 @@ import org.springframework.data.annotation.CreatedDate;
  *
  * <p>인증 시점의 좌표와 정확도를 남기는 이유는 어뷰징을 조사할 근거가 필요해서다.
  * 다만 정확도 값도 단말이 보내는 것이라 조작을 막지는 못한다(ADR-016).
+ *
+ * <p>{@code BaseTimeEntity}를 상속하지 않고 {@code createdAt}만 직접 두지만,
+ * {@code @CreatedDate}가 실제로 채워지려면 {@link AuditingEntityListener}가
+ * 있어야 한다 — 빠지면 항상 null로 저장을 시도해 {@code NOT NULL} 제약에
+ * 매번 걸린다({@code PostLike}에서 실전 확인).
  */
 @Entity
 @Getter
 @Table(name = "region_visits")
+@EntityListeners(AuditingEntityListener.class)
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class RegionVisit {
 

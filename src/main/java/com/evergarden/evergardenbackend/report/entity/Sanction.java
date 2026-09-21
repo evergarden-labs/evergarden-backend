@@ -4,6 +4,7 @@ import com.evergarden.evergardenbackend.user.entity.Admin;
 import com.evergarden.evergardenbackend.user.entity.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
@@ -18,16 +19,23 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 /**
  * 경고·차단·해제 이력.
  *
  * <p>만료 컬럼이 없다. 차단은 무기한이고 관리자가 직접 푼다(ADR-033).
  * 기간제로 바꾸면 만료 시각과 자동 해제 배치가 따라온다.
+ *
+ * <p>{@code BaseTimeEntity}를 상속하지 않고 {@code createdAt}만 직접 두지만,
+ * {@code @CreatedDate}가 실제로 채워지려면 {@link AuditingEntityListener}가
+ * 있어야 한다 — 빠지면 항상 null로 저장을 시도해 {@code NOT NULL} 제약에
+ * 매번 걸린다({@code PostLike}에서 실전 확인).
  */
 @Entity
 @Getter
 @Table(name = "sanctions")
+@EntityListeners(AuditingEntityListener.class)
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Sanction {
 
