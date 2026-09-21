@@ -41,6 +41,7 @@ import com.evergarden.evergardenbackend.trip.repository.TripRegionRepository;
 import com.evergarden.evergardenbackend.trip.repository.TripRepository;
 import com.evergarden.evergardenbackend.trip.service.TripAccessGuard;
 import com.evergarden.evergardenbackend.trip.service.TripMapper;
+import com.evergarden.evergardenbackend.user.entity.User;
 import com.evergarden.evergardenbackend.user.repository.UserRepository;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
@@ -202,8 +203,25 @@ public class PostService {
     /** 내가 작성한 게시물을 최신순으로(COMM-09). 삭제한 게시물은 뺀다. */
     @Transactional(readOnly = true)
     public Page<PostSummary> listMyPosts(Long userId, Pageable pageable) {
-        return postRepository.findByAuthor_IdAndStatusOrderByCreatedAtDesc(userId, PostStatus.ACTIVE, pageable)
-                .map(post -> toSummary(post, userId));
+        return listUserPosts(userId, userId, pageable);
+    }
+
+    /**
+     * 작성자의 게시물 목록(COMM-20). {@code listMyPosts}와 쿼리는 같지만, 글쓴이
+     * ({@code authorId})와 보는 사람({@code viewerId})이 다를 수 있다 — {@code likedByMe}는
+     * 보는 사람 기준으로 계산해야 해서 서로 구분한다.
+     */
+    @Transactional(readOnly = true)
+    public Page<PostSummary> listUserPosts(Long authorId, Long viewerId, Pageable pageable) {
+        findVisibleUser(authorId);
+        return postRepository.findByAuthor_IdAndStatusOrderByCreatedAtDesc(authorId, PostStatus.ACTIVE, pageable)
+                .map(post -> toSummary(post, viewerId));
+    }
+
+    private User findVisibleUser(Long userId) {
+        return userRepository.findById(userId)
+                .filter(User::isActive)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
     }
 
     /** 커뮤니티 전체 피드(COMM-01). */
