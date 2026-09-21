@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -109,5 +110,50 @@ class PostControllerTest {
                                 {"content":"내용","tripId":1}
                                 """))
                 .andExpect(status().isUnauthorized());
+    }
+
+    // ── 수정(COMM-05) ────────────────────────────────────────
+
+    @Test
+    @DisplayName("수정 시 content가 비어 있으면 INVALID_REQUEST — 서비스를 부르지 않는다")
+    void 수정_빈본문() throws Exception {
+        mvc.perform(patch("/posts/5")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"content":""}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    @DisplayName("남의 게시물을 수정하면 서비스의 403이 그대로 전달된다")
+    void 수정_남의게시물() throws Exception {
+        given(postService.update(eq(1L), eq(5L), any()))
+                .willThrow(new BusinessException(ErrorCode.NOT_RESOURCE_OWNER));
+
+        mvc.perform(patch("/posts/5")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"content":"고친 내용"}
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("NOT_RESOURCE_OWNER"));
+    }
+
+    @Test
+    @DisplayName("정상 수정 요청은 로그인한 사용자 ID로 서비스에 위임한다")
+    void 정상_수정() throws Exception {
+        given(postService.update(eq(1L), eq(5L), any())).willReturn(mock(PostDetail.class));
+
+        mvc.perform(patch("/posts/5")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"content":"고친 내용"}
+                                """))
+                .andExpect(status().isOk());
     }
 }

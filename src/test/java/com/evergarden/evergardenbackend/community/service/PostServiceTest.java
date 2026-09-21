@@ -18,6 +18,8 @@ import com.evergarden.evergardenbackend.archive.service.ArchiveAccessGuard;
 import com.evergarden.evergardenbackend.archive.service.ArchiveMapper;
 import com.evergarden.evergardenbackend.community.dto.PostCreateRequest;
 import com.evergarden.evergardenbackend.community.dto.PostDetail;
+import com.evergarden.evergardenbackend.community.dto.PostUpdateRequest;
+import com.evergarden.evergardenbackend.community.entity.Post;
 import com.evergarden.evergardenbackend.community.entity.PostRegion;
 import com.evergarden.evergardenbackend.community.entity.RegionSource;
 import com.evergarden.evergardenbackend.community.entity.ShareType;
@@ -67,6 +69,7 @@ class PostServiceTest {
     private final UserRepository userRepository = mock(UserRepository.class);
     private final TripAccessGuard tripAccessGuard = mock(TripAccessGuard.class);
     private final ArchiveAccessGuard archiveAccessGuard = mock(ArchiveAccessGuard.class);
+    private final PostAccessGuard postAccessGuard = mock(PostAccessGuard.class);
     private final TripMapper tripMapper = mock(TripMapper.class);
     private final ArchiveMapper archiveMapper = mock(ArchiveMapper.class);
     private final MediaMapper mediaMapper = mock(MediaMapper.class);
@@ -75,7 +78,7 @@ class PostServiceTest {
     private final PostService postService = new PostService(
             postRepository, postRegionRepository, tripRepository, archiveRepository, tripRegionRepository,
             tripPlaceRepository, archiveItemRepository, regionRepository, userRepository, tripAccessGuard,
-            archiveAccessGuard, tripMapper, archiveMapper, postMapper, mediaMapper);
+            archiveAccessGuard, postAccessGuard, tripMapper, archiveMapper, postMapper, mediaMapper);
 
     private User author;
 
@@ -275,5 +278,69 @@ class PostServiceTest {
         assertThat(result.shareType()).isEqualTo(ShareType.BOTH);
         assertThat(result.sharedCourse()).isNotNull();
         assertThat(result.sharedArchive()).isNotNull();
+    }
+
+    // ── 수정(COMM-05) ────────────────────────────────────────
+
+    private Post post(Long id) {
+        Post post = Post.builder().author(author).content("원래 내용").shareType(ShareType.ARCHIVE).build();
+        ReflectionTestUtils.setField(post, "id", id);
+        return post;
+    }
+
+    @Test
+    @DisplayName("없는 게시물을 수정하면 POST_NOT_FOUND")
+    void 수정_없는게시물() {
+        given(postRepository.findById(99L)).willReturn(Optional.empty());
+        PostUpdateRequest request = new PostUpdateRequest("고친 내용");
+
+        assertThatThrownBy(() -> postService.update(USER_ID, 99L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.POST_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("삭제된 게시물을 수정하면 POST_NOT_FOUND")
+    void 수정_삭제된게시물() {
+        Post post = post(5L);
+        post.delete();
+        given(postRepository.findById(5L)).willReturn(Optional.of(post));
+        PostUpdateRequest request = new PostUpdateRequest("고친 내용");
+
+        assertThatThrownBy(() -> postService.update(USER_ID, 5L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.POST_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("남의 게시물을 수정하면 403 — 게시물 접근가드에 위임한다")
+    void 수정_남의게시물() {
+        Post post = post(5L);
+        given(postRepository.findById(5L)).willReturn(Optional.of(post));
+        doThrow(new BusinessException(ErrorCode.NOT_RESOURCE_OWNER))
+                .when(postAccessGuard).checkOwner(post, USER_ID);
+        PostUpdateRequest request = new PostUpdateRequest("고친 내용");
+
+        assertThatThrownBy(() -> postService.update(USER_ID, 5L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.NOT_RESOURCE_OWNER);
+    }
+
+    @Test
+    @DisplayName("정상 수정은 본문만 바뀌고, 지역은 재계산 없이 저장된 스냅샷을 그대로 읽는다")
+    void 수정_정상() {
+        Post post = post(5L);
+        Region savedRegion = region("11");
+        given(postRepository.findById(5L)).willReturn(Optional.of(post));
+        given(postRegionRepository.findByPost(post))
+                .willReturn(List.of(new PostRegion(post, savedRegion, RegionSource.MANUAL)));
+        PostUpdateRequest request = new PostUpdateRequest("고친 내용");
+
+        PostDetail result = postService.update(USER_ID, 5L, request);
+
+        assertThat(result.content()).isEqualTo("고친 내용");
+        assertThat(result.regions()).extracting("code").containsExactly("11");
+        verify(tripRepository, never()).findById(any());
+        verify(regionRepository, never()).findById(any());
     }
 }
