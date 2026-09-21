@@ -3,6 +3,7 @@ package com.evergarden.evergardenbackend.community.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -13,12 +14,14 @@ import com.evergarden.evergardenbackend.community.dto.CommentResponse;
 import com.evergarden.evergardenbackend.community.dto.CommentWriteRequest;
 import com.evergarden.evergardenbackend.community.dto.Reply;
 import com.evergarden.evergardenbackend.community.entity.Comment;
+import com.evergarden.evergardenbackend.community.entity.CommentStatus;
 import com.evergarden.evergardenbackend.community.entity.Post;
 import com.evergarden.evergardenbackend.community.entity.ShareType;
 import com.evergarden.evergardenbackend.community.repository.CommentRepository;
 import com.evergarden.evergardenbackend.community.repository.PostRepository;
 import com.evergarden.evergardenbackend.global.exception.BusinessException;
 import com.evergarden.evergardenbackend.global.exception.ErrorCode;
+import com.evergarden.evergardenbackend.global.response.CursorPage;
 import com.evergarden.evergardenbackend.user.entity.User;
 import com.evergarden.evergardenbackend.user.repository.UserRepository;
 import java.util.List;
@@ -290,5 +293,77 @@ class CommentServiceTest {
 
         assertThat(reply.isDeleted()).isTrue();
         verify(commentRepository, never()).delete(any());
+    }
+
+    // ── 댓글 목록 조회(COMM-03) ──────────────────────────────
+
+    @Test
+    @DisplayName("없는 게시물의 댓글을 조회하면 POST_NOT_FOUND")
+    void 댓글목록_없는게시물() {
+        given(postRepository.findById(99L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> commentService.listComments(99L, null, 20))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.POST_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("삭제된 댓글도 목록에 포함된다 — 화면에서 자리만 남긴다")
+    void 댓글목록_삭제된댓글포함() {
+        Post post = post(5L);
+        Comment deleted = comment(10L);
+        deleted.delete();
+        given(postRepository.findById(5L)).willReturn(Optional.of(post));
+        given(commentRepository.findTopLevelAfter(eq(post), eq(null), any())).willReturn(List.of(deleted));
+
+        CursorPage<CommentResponse> result = commentService.listComments(5L, null, 20);
+
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.items().get(0).status()).isEqualTo(CommentStatus.DELETED);
+        assertThat(result.items().get(0).content()).isNull();
+    }
+
+    @Test
+    @DisplayName("다음 페이지가 있으면 hasNext와 nextCursor를 채운다")
+    void 댓글목록_다음페이지() {
+        Post post = post(5L);
+        List<Comment> twentyOne = java.util.stream.IntStream.rangeClosed(1, 21)
+                .mapToObj(i -> comment((long) i)).toList();
+        given(postRepository.findById(5L)).willReturn(Optional.of(post));
+        given(commentRepository.findTopLevelAfter(eq(post), eq(null), any())).willReturn(twentyOne);
+
+        CursorPage<CommentResponse> result = commentService.listComments(5L, null, 20);
+
+        assertThat(result.items()).hasSize(20);
+        assertThat(result.meta().hasNext()).isTrue();
+        assertThat(result.meta().nextCursor()).isNotNull();
+    }
+
+    // ── 대댓글 목록 조회(COMM-03) ────────────────────────────
+
+    @Test
+    @DisplayName("없는 댓글의 대댓글을 조회하면 COMMENT_NOT_FOUND")
+    void 대댓글목록_없는댓글() {
+        given(commentRepository.findById(99L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> commentService.listReplies(99L, null, 20))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.COMMENT_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("부모 댓글이 삭제됐어도 대댓글은 조회된다")
+    void 대댓글목록_삭제된부모도조회() {
+        Comment parentComment = comment(10L);
+        parentComment.delete();
+        Comment reply = Comment.replyTo(parentComment, author, "답글");
+        ReflectionTestUtils.setField(reply, "id", 11L);
+        given(commentRepository.findById(10L)).willReturn(Optional.of(parentComment));
+        given(commentRepository.findRepliesAfter(eq(parentComment), eq(null), any())).willReturn(List.of(reply));
+
+        CursorPage<Reply> result = commentService.listReplies(10L, null, 20);
+
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.items().get(0).parentCommentId()).isEqualTo(10L);
     }
 }

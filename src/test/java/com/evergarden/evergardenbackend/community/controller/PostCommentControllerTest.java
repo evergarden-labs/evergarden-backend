@@ -1,9 +1,11 @@
 package com.evergarden.evergardenbackend.community.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -13,6 +15,8 @@ import com.evergarden.evergardenbackend.community.service.CommentService;
 import com.evergarden.evergardenbackend.global.config.SecurityConfig;
 import com.evergarden.evergardenbackend.global.exception.BusinessException;
 import com.evergarden.evergardenbackend.global.exception.ErrorCode;
+import com.evergarden.evergardenbackend.global.response.CursorMeta;
+import com.evergarden.evergardenbackend.global.response.CursorPage;
 import com.evergarden.evergardenbackend.global.security.DevUserProvider;
 import com.evergarden.evergardenbackend.global.security.JwtAccessDeniedHandler;
 import com.evergarden.evergardenbackend.global.security.JwtAuthenticationEntryPoint;
@@ -109,5 +113,38 @@ class PostCommentControllerTest {
                                 {"content":"좋은 코스네요"}
                                 """))
                 .andExpect(status().isUnauthorized());
+    }
+
+    // ── 목록 조회(COMM-03) ───────────────────────────────────
+
+    @Test
+    @DisplayName("size가 50을 넘으면 INVALID_REQUEST")
+    void 목록_크기초과() throws Exception {
+        mvc.perform(get("/posts/5/comments?size=51").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    @DisplayName("없는 게시물의 댓글을 조회하면 서비스의 404가 그대로 전달된다")
+    void 목록_없는게시물() throws Exception {
+        given(commentService.listComments(eq(99L), any(), anyInt()))
+                .willThrow(new BusinessException(ErrorCode.POST_NOT_FOUND));
+
+        mvc.perform(get("/posts/99/comments").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("POST_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("정상 조회는 목록과 커서 메타를 그대로 돌려준다")
+    void 목록_정상() throws Exception {
+        given(commentService.listComments(eq(5L), any(), anyInt()))
+                .willReturn(new CursorPage<>(java.util.List.of(mock(CommentResponse.class)), CursorMeta.last()));
+
+        mvc.perform(get("/posts/5/comments").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.meta.hasNext").value(false));
     }
 }

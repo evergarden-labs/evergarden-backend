@@ -1,9 +1,11 @@
 package com.evergarden.evergardenbackend.community.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -13,6 +15,8 @@ import com.evergarden.evergardenbackend.community.service.CommentService;
 import com.evergarden.evergardenbackend.global.config.SecurityConfig;
 import com.evergarden.evergardenbackend.global.exception.BusinessException;
 import com.evergarden.evergardenbackend.global.exception.ErrorCode;
+import com.evergarden.evergardenbackend.global.response.CursorMeta;
+import com.evergarden.evergardenbackend.global.response.CursorPage;
 import com.evergarden.evergardenbackend.global.security.DevUserProvider;
 import com.evergarden.evergardenbackend.global.security.JwtAccessDeniedHandler;
 import com.evergarden.evergardenbackend.global.security.JwtAuthenticationEntryPoint;
@@ -98,5 +102,30 @@ class CommentReplyControllerTest {
                                 {"content":"좋은 답글"}
                                 """))
                 .andExpect(status().isOk());
+    }
+
+    // ── 목록 조회(COMM-03) ───────────────────────────────────
+
+    @Test
+    @DisplayName("없는 댓글의 대댓글을 조회하면 서비스의 404가 그대로 전달된다")
+    void 목록_없는댓글() throws Exception {
+        given(commentService.listReplies(eq(99L), any(), anyInt()))
+                .willThrow(new BusinessException(ErrorCode.COMMENT_NOT_FOUND));
+
+        mvc.perform(get("/comments/99/replies").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("COMMENT_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("정상 조회는 목록과 커서 메타를 그대로 돌려준다")
+    void 목록_정상() throws Exception {
+        given(commentService.listReplies(eq(10L), any(), anyInt()))
+                .willReturn(new CursorPage<>(java.util.List.of(mock(Reply.class)), CursorMeta.last()));
+
+        mvc.perform(get("/comments/10/replies").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.meta.hasNext").value(false));
     }
 }
