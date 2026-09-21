@@ -10,6 +10,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -30,6 +31,13 @@ public class PostController {
             @AuthenticationPrincipal AuthPrincipal me,
             @Valid @RequestBody PostCreateRequest request) {
         return ApiResponse.of(postService.create(me.userId(), request));
+    }
+
+    @GetMapping("/{postId}")
+    public ApiResponse<PostDetail> get(
+            @AuthenticationPrincipal AuthPrincipal me,
+            @PathVariable Long postId) {
+        return ApiResponse.of(postService.get(me.userId(), postId));
     }
 
     @PatchMapping("/{postId}")
