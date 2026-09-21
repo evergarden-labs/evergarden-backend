@@ -246,4 +246,34 @@ class PostControllerTest {
                 .andExpect(jsonPath("$.data.likeCount").value(0))
                 .andExpect(jsonPath("$.data.likedByMe").value(false));
     }
+
+    // ── 피드 조회(COMM-01) ───────────────────────────────────
+
+    @Test
+    @DisplayName("size가 50을 넘으면 INVALID_REQUEST")
+    void 피드_크기초과() throws Exception {
+        mvc.perform(get("/posts?size=51").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    @DisplayName("정상 조회는 목록과 커서 메타를 그대로 돌려준다")
+    void 피드_정상() throws Exception {
+        given(postService.listPosts(eq(1L), any(), any(), org.mockito.ArgumentMatchers.anyInt()))
+                .willReturn(new com.evergarden.evergardenbackend.global.response.CursorPage<>(
+                        java.util.List.of(mock(com.evergarden.evergardenbackend.community.dto.PostSummary.class)),
+                        com.evergarden.evergardenbackend.global.response.CursorMeta.last()));
+
+        mvc.perform(get("/posts").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.meta.hasNext").value(false));
+    }
+
+    @Test
+    @DisplayName("로그인하지 않으면 401")
+    void 피드_비로그인() throws Exception {
+        mvc.perform(get("/posts")).andExpect(status().isUnauthorized());
+    }
 }

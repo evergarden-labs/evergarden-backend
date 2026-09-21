@@ -20,6 +20,7 @@ import com.evergarden.evergardenbackend.archive.service.ArchiveMapper;
 import com.evergarden.evergardenbackend.community.dto.LikeResult;
 import com.evergarden.evergardenbackend.community.dto.PostCreateRequest;
 import com.evergarden.evergardenbackend.community.dto.PostDetail;
+import com.evergarden.evergardenbackend.community.dto.PostSortType;
 import com.evergarden.evergardenbackend.community.dto.PostSummary;
 import com.evergarden.evergardenbackend.community.dto.PostUpdateRequest;
 import com.evergarden.evergardenbackend.community.entity.Post;
@@ -33,6 +34,7 @@ import com.evergarden.evergardenbackend.community.repository.PostRegionRepositor
 import com.evergarden.evergardenbackend.community.repository.PostRepository;
 import com.evergarden.evergardenbackend.global.exception.BusinessException;
 import com.evergarden.evergardenbackend.global.exception.ErrorCode;
+import com.evergarden.evergardenbackend.global.response.CursorPage;
 import com.evergarden.evergardenbackend.media.service.MediaMapper;
 import com.evergarden.evergardenbackend.place.entity.Place;
 import com.evergarden.evergardenbackend.place.entity.Region;
@@ -551,5 +553,107 @@ class PostServiceTest {
 
         assertThat(result.getContent()).hasSize(1);
         assertThat(result.getContent().get(0).postId()).isEqualTo(5L);
+    }
+
+    // ── 피드 조회(COMM-01·02) ────────────────────────────────
+
+    @Test
+    @DisplayName("존재하지 않는 지역의 피드를 조회하면 REGION_NOT_FOUND")
+    void 지역피드_없는지역() {
+        given(regionRepository.findById("999")).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> postService.listRegionPosts(USER_ID, "999", null, null, 20))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.REGION_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("sort를 안 보내면 최신순(regionCode 없이)으로 조회한다")
+    void 전체피드_기본값은_최신순() {
+        Post post = post(5L);
+        given(postRepository.findLatest(eq(null), eq(null), any())).willReturn(List.of(post));
+        given(postRegionRepository.findByPost(post)).willReturn(List.of());
+
+        CursorPage<PostSummary> result = postService.listPosts(USER_ID, null, null, 20);
+
+        assertThat(result.items()).hasSize(1);
+        verify(postRepository, never()).findPopular(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("인기순은 최근 30일 이후 게시물만 대상으로 조회한다")
+    void 전체피드_인기순은_30일창() {
+        given(postRepository.findPopular(any(), any(), any(), any(), any())).willReturn(List.of());
+
+        postService.listPosts(USER_ID, PostSortType.POPULAR, null, 20);
+
+        ArgumentCaptor<java.time.LocalDateTime> sinceCaptor = ArgumentCaptor.forClass(java.time.LocalDateTime.class);
+        verify(postRepository).findPopular(eq(null), sinceCaptor.capture(), eq(null), eq(null), any());
+        assertThat(sinceCaptor.getValue()).isCloseTo(
+                java.time.LocalDateTime.now().minusDays(30), org.assertj.core.api.Assertions.within(1, java.time.temporal.ChronoUnit.MINUTES));
+    }
+
+    @Test
+    @DisplayName("지역별 피드는 regionCode를 그대로 쿼리에 넘긴다")
+    void 지역피드_정상() {
+        Region region = region("11");
+        given(regionRepository.findById("11")).willReturn(Optional.of(region));
+        given(postRepository.findLatest(eq("11"), eq(null), any())).willReturn(List.of());
+
+        postService.listRegionPosts(USER_ID, "11", null, null, 20);
+
+        verify(postRepository).findLatest(eq("11"), eq(null), any());
+    }
+
+    @Test
+    @DisplayName("최신순은 다음 페이지가 있으면 id 커서를 만든다")
+    void 전체피드_최신순_다음페이지() {
+        List<Post> twentyOne = java.util.stream.LongStream.rangeClosed(1, 21)
+                .mapToObj(this::post).toList();
+        given(postRepository.findLatest(eq(null), eq(null), any())).willReturn(twentyOne);
+        twentyOne.forEach(p -> given(postRegionRepository.findByPost(p)).willReturn(List.of()));
+
+        CursorPage<PostSummary> result = postService.listPosts(USER_ID, null, null, 20);
+
+        assertThat(result.items()).hasSize(20);
+        assertThat(result.meta().hasNext()).isTrue();
+        assertThat(result.meta().nextCursor()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("인기순 커서는 좋아요 수와 id를 함께 실어, 다음 조회에 그대로 되돌려준다")
+    void 전체피드_인기순_커서왕복() {
+        Post post = post(7L);
+        ReflectionTestUtils.setField(post, "likeCount", 3);
+        given(postRepository.findPopular(any(), any(), eq(null), eq(null), any()))
+                .willReturn(List.of(post));
+        given(postRegionRepository.findByPost(post)).willReturn(List.of());
+
+        CursorPage<PostSummary> first = postService.listPosts(USER_ID, PostSortType.POPULAR, null, 20);
+        assertThat(first.meta().hasNext()).isFalse();
+
+        // 다음 페이지가 있는 상황을 흉내내려면 size+1개를 돌려줘야 하므로, 21개로 재구성
+        List<Post> twentyOne = java.util.stream.LongStream.rangeClosed(1, 21)
+                .mapToObj(this::post).toList();
+        twentyOne.forEach(p -> ReflectionTestUtils.setField(p, "likeCount", 5));
+        given(postRepository.findPopular(any(), any(), eq(null), eq(null), any())).willReturn(twentyOne);
+        twentyOne.forEach(p -> given(postRegionRepository.findByPost(p)).willReturn(List.of()));
+
+        CursorPage<PostSummary> paged = postService.listPosts(USER_ID, PostSortType.POPULAR, null, 20);
+        String cursor = paged.meta().nextCursor();
+        assertThat(cursor).isNotNull();
+
+        given(postRepository.findPopular(any(), any(), eq(5), eq(20L), any())).willReturn(List.of());
+        postService.listPosts(USER_ID, PostSortType.POPULAR, cursor, 20);
+
+        verify(postRepository).findPopular(eq(null), any(), eq(5), eq(20L), any());
+    }
+
+    @Test
+    @DisplayName("인기순 조회에 깨진 커서를 보내면 INVALID_REQUEST")
+    void 전체피드_인기순_잘못된커서() {
+        assertThatThrownBy(() -> postService.listPosts(USER_ID, PostSortType.POPULAR, "@@broken@@", 20))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_REQUEST);
     }
 }
