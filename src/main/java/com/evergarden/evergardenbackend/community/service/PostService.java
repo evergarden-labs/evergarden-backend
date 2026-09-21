@@ -109,6 +109,20 @@ public class PostService {
     }
 
     /**
+     * 게시물 상세를 조회한다(COMM-03·17). 소유자가 아니어도 누구나 볼 수 있다 —
+     * {@code viewerId}는 접근 제어가 아니라 {@code likedByMe} 계산용이다.
+     *
+     * <p>원본 코스·아카이브가 삭제됐어도 게시물 자체는 살아 있으면 {@code 200}이다 —
+     * {@code sharedCourse}·{@code sharedArchive}가 {@code null}이 되고 {@code deletedShare}에
+     * 무엇이 사라졌는지 담긴다.
+     */
+    @Transactional(readOnly = true)
+    public PostDetail get(Long viewerId, Long postId) {
+        Post post = findActivePost(postId);
+        return toDetail(post, viewerId);
+    }
+
+    /**
      * 게시물 본문만 고친다(COMM-05). 공유 대상과 지역 스냅샷은 바꿀 수 없다(ADR-045) —
      * 여기서 지역을 다시 계산하지 않고 이미 저장된 {@code PostRegion}을 그대로 읽는다.
      */
