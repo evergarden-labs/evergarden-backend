@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 
 import com.evergarden.evergardenbackend.community.dto.CommentResponse;
 import com.evergarden.evergardenbackend.community.dto.CommentWriteRequest;
+import com.evergarden.evergardenbackend.community.dto.Reply;
 import com.evergarden.evergardenbackend.community.entity.Comment;
 import com.evergarden.evergardenbackend.community.entity.Post;
 import com.evergarden.evergardenbackend.community.entity.ShareType;
@@ -198,6 +199,96 @@ class CommentServiceTest {
         assertThat(comment.isDeleted()).isTrue();
         assertThat(comment.getContent()).isNull();
         assertThat(post.getCommentCount()).isEqualTo(1);
+        verify(commentRepository, never()).delete(any());
+    }
+
+    // ── 대댓글 작성(COMM-14) ─────────────────────────────────
+
+    @Test
+    @DisplayName("없는 댓글에 답글을 달면 COMMENT_NOT_FOUND")
+    void 답글작성_없는댓글() {
+        given(commentRepository.findById(99L)).willReturn(Optional.empty());
+        CommentWriteRequest request = new CommentWriteRequest("답글");
+
+        assertThatThrownBy(() -> commentService.createReply(USER_ID, 99L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.COMMENT_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("대댓글에 또 대댓글을 달면 INVALID_REQUEST — 깊이는 1단계까지다")
+    void 답글작성_깊이제한() {
+        Comment parentComment = comment(10L);
+        Comment reply = Comment.replyTo(parentComment, author, "답글");
+        ReflectionTestUtils.setField(reply, "id", 11L);
+        given(commentRepository.findById(11L)).willReturn(Optional.of(reply));
+        CommentWriteRequest request = new CommentWriteRequest("대대댓글");
+
+        assertThatThrownBy(() -> commentService.createReply(USER_ID, 11L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_REQUEST);
+        verify(commentRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("정상 답글 작성은 부모 댓글의 게시물 댓글 수를 늘린다")
+    void 답글작성_정상() {
+        Comment parentComment = comment(10L);
+        Post post = parentComment.getPost();
+        given(commentRepository.findById(10L)).willReturn(Optional.of(parentComment));
+        CommentWriteRequest request = new CommentWriteRequest("좋은 답글");
+
+        Reply result = commentService.createReply(USER_ID, 10L, request);
+
+        assertThat(result.content()).isEqualTo("좋은 답글");
+        assertThat(result.parentCommentId()).isEqualTo(10L);
+        assertThat(post.getCommentCount()).isEqualTo(1);
+    }
+
+    // ── 대댓글 수정·삭제(COMM-15·16) ─────────────────────────
+
+    @Test
+    @DisplayName("남의 답글을 수정하면 403 — 댓글 접근가드에 위임한다(댓글과 같은 저장소)")
+    void 답글수정_남의것() {
+        Comment parentComment = comment(10L);
+        Comment reply = Comment.replyTo(parentComment, author, "답글");
+        ReflectionTestUtils.setField(reply, "id", 11L);
+        given(commentRepository.findById(11L)).willReturn(Optional.of(reply));
+        doThrow(new BusinessException(ErrorCode.NOT_RESOURCE_OWNER))
+                .when(commentAccessGuard).checkOwner(reply, USER_ID);
+        CommentWriteRequest request = new CommentWriteRequest("고친 답글");
+
+        assertThatThrownBy(() -> commentService.updateReply(USER_ID, 11L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.NOT_RESOURCE_OWNER);
+    }
+
+    @Test
+    @DisplayName("정상 답글 수정은 Reply 모양으로 돌려준다")
+    void 답글수정_정상() {
+        Comment parentComment = comment(10L);
+        Comment reply = Comment.replyTo(parentComment, author, "답글");
+        ReflectionTestUtils.setField(reply, "id", 11L);
+        given(commentRepository.findById(11L)).willReturn(Optional.of(reply));
+        CommentWriteRequest request = new CommentWriteRequest("고친 답글");
+
+        Reply result = commentService.updateReply(USER_ID, 11L, request);
+
+        assertThat(result.content()).isEqualTo("고친 답글");
+        assertThat(result.parentCommentId()).isEqualTo(10L);
+    }
+
+    @Test
+    @DisplayName("정상 답글 삭제는 상태만 바꾼다")
+    void 답글삭제_정상() {
+        Comment parentComment = comment(10L);
+        Comment reply = Comment.replyTo(parentComment, author, "답글");
+        ReflectionTestUtils.setField(reply, "id", 11L);
+        given(commentRepository.findById(11L)).willReturn(Optional.of(reply));
+
+        commentService.deleteReply(USER_ID, 11L);
+
+        assertThat(reply.isDeleted()).isTrue();
         verify(commentRepository, never()).delete(any());
     }
 }
