@@ -9,6 +9,7 @@ import com.evergarden.evergardenbackend.archive.service.ArchiveAccessGuard;
 import com.evergarden.evergardenbackend.archive.service.ArchiveMapper;
 import com.evergarden.evergardenbackend.community.dto.PostCreateRequest;
 import com.evergarden.evergardenbackend.community.dto.PostDetail;
+import com.evergarden.evergardenbackend.community.dto.PostUpdateRequest;
 import com.evergarden.evergardenbackend.community.entity.Post;
 import com.evergarden.evergardenbackend.community.entity.PostRegion;
 import com.evergarden.evergardenbackend.community.entity.RegionSource;
@@ -56,6 +57,7 @@ public class PostService {
     private final UserRepository userRepository;
     private final TripAccessGuard tripAccessGuard;
     private final ArchiveAccessGuard archiveAccessGuard;
+    private final PostAccessGuard postAccessGuard;
     private final TripMapper tripMapper;
     private final ArchiveMapper archiveMapper;
     private final PostMapper postMapper;
@@ -106,6 +108,25 @@ public class PostService {
         return toDetail(post, regions, trip, tripPlaces, archive, userId);
     }
 
+    /**
+     * 게시물 본문만 고친다(COMM-05). 공유 대상과 지역 스냅샷은 바꿀 수 없다(ADR-045) —
+     * 여기서 지역을 다시 계산하지 않고 이미 저장된 {@code PostRegion}을 그대로 읽는다.
+     */
+    public PostDetail update(Long userId, Long postId, PostUpdateRequest request) {
+        Post post = findActivePost(postId);
+        postAccessGuard.checkOwner(post, userId);
+
+        post.updateContent(request.content());
+
+        return toDetail(post, userId);
+    }
+
+    private Post findActivePost(Long postId) {
+        return postRepository.findById(postId)
+                .filter(p -> !p.isDeleted())
+                .orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));
+    }
+
     private ShareType shareType(Trip trip, Archive archive) {
         if (trip != null && archive != null) {
             return ShareType.BOTH;
@@ -148,6 +169,22 @@ public class PostService {
                 : archiveMapper.toSummary(archive, (int) archiveItemRepository.countByArchive(archive), userId);
 
         return postMapper.toDetail(post, regions, thumbnailUrl(archive, tripPlaces), false, sharedCourse, sharedArchive);
+    }
+
+    /**
+     * 이미 저장된 게시물의 상세를 다시 조립한다. {@code create()}와 달리 트립·아카이브·
+     * 지역을 요청이 아니라 {@link Post}에 이미 걸려 있는 연관관계와 {@code post_regions}에서
+     * 읽는다 — 수정 시점에 지역을 다시 계산하지 않기 위해서다(ADR-045).
+     */
+    private PostDetail toDetail(Post post, Long viewerId) {
+        Trip trip = post.getSharedTrip();
+        Archive archive = post.getSharedArchive();
+        List<TripPlace> tripPlaces = trip == null ? List.of()
+                : tripPlaceRepository.findByTripOrderByDayNumberAscSortOrderAsc(trip);
+        List<Region> regions = postRegionRepository.findByPost(post).stream()
+                .map(PostRegion::getRegion).toList();
+
+        return toDetail(post, regions, trip, tripPlaces, archive, viewerId);
     }
 
     private Long linkedArchiveId(Trip trip) {
