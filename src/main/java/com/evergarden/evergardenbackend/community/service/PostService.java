@@ -7,13 +7,18 @@ import com.evergarden.evergardenbackend.archive.repository.ArchiveItemRepository
 import com.evergarden.evergardenbackend.archive.repository.ArchiveRepository;
 import com.evergarden.evergardenbackend.archive.service.ArchiveAccessGuard;
 import com.evergarden.evergardenbackend.archive.service.ArchiveMapper;
+import com.evergarden.evergardenbackend.community.dto.LikeResult;
 import com.evergarden.evergardenbackend.community.dto.PostCreateRequest;
 import com.evergarden.evergardenbackend.community.dto.PostDetail;
+import com.evergarden.evergardenbackend.community.dto.PostSummary;
 import com.evergarden.evergardenbackend.community.dto.PostUpdateRequest;
 import com.evergarden.evergardenbackend.community.entity.Post;
+import com.evergarden.evergardenbackend.community.entity.PostLike;
+import com.evergarden.evergardenbackend.community.entity.PostLikeId;
 import com.evergarden.evergardenbackend.community.entity.PostRegion;
 import com.evergarden.evergardenbackend.community.entity.RegionSource;
 import com.evergarden.evergardenbackend.community.entity.ShareType;
+import com.evergarden.evergardenbackend.community.repository.PostLikeRepository;
 import com.evergarden.evergardenbackend.community.repository.PostRegionRepository;
 import com.evergarden.evergardenbackend.community.repository.PostRepository;
 import com.evergarden.evergardenbackend.global.exception.BusinessException;
@@ -37,6 +42,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -48,6 +56,7 @@ public class PostService {
 
     private final PostRepository postRepository;
     private final PostRegionRepository postRegionRepository;
+    private final PostLikeRepository postLikeRepository;
     private final TripRepository tripRepository;
     private final ArchiveRepository archiveRepository;
     private final TripRegionRepository tripRegionRepository;
@@ -146,6 +155,41 @@ public class PostService {
         post.delete();
     }
 
+    /**
+     * 좋아요를 누른다(COMM-07). 중복 여부를 미리 확인하지 않고 바로 저장을 시도한 뒤
+     * {@code (post_id, user_id)} 복합키 위반을 잡아 {@code ALREADY_LIKED}로 바꾼다 —
+     * 미리 확인하면 동시 요청 사이에서 새어 나간다(ADR-006).
+     */
+    public LikeResult like(Long userId, Long postId) {
+        Post post = findActivePost(postId);
+        try {
+            postLikeRepository.saveAndFlush(new PostLike(post, userRepository.getReferenceById(userId)));
+        } catch (DataIntegrityViolationException e) {
+            throw new BusinessException(ErrorCode.ALREADY_LIKED);
+        }
+        post.increaseLikeCount();
+        return new LikeResult(post.getId(), post.getLikeCount(), true);
+    }
+
+    /** 좋아요를 취소한다(COMM-19). */
+    public LikeResult unlike(Long userId, Long postId) {
+        Post post = findActivePost(postId);
+        PostLikeId id = new PostLikeId(postId, userId);
+        if (!postLikeRepository.existsById(id)) {
+            throw new BusinessException(ErrorCode.NOT_LIKED);
+        }
+        postLikeRepository.deleteById(id);
+        post.decreaseLikeCount();
+        return new LikeResult(post.getId(), post.getLikeCount(), false);
+    }
+
+    /** 내가 좋아요한 게시물을 최근 순으로(COMM-08). 좋아요한 뒤 삭제된 게시물은 뺀다. */
+    @Transactional(readOnly = true)
+    public Page<PostSummary> listMyLikedPosts(Long userId, Pageable pageable) {
+        return postLikeRepository.findActiveLikedByUser(userId, pageable)
+                .map(postLike -> toSummary(postLike.getPost(), userId));
+    }
+
     private Post findActivePost(Long postId) {
         return postRepository.findById(postId)
                 .filter(p -> !p.isDeleted())
@@ -187,13 +231,14 @@ public class PostService {
     }
 
     private PostDetail toDetail(Post post, List<Region> regions, Trip trip, List<TripPlace> tripPlaces,
-                                Archive archive, Long userId) {
+                                Archive archive, Long viewerId) {
         TripSummary sharedCourse = trip == null ? null
                 : tripMapper.toSummary(trip, tripRegions(trip), tripPlaces, linkedArchiveId(trip));
         ArchiveSummary sharedArchive = archive == null ? null
-                : archiveMapper.toSummary(archive, (int) archiveItemRepository.countByArchive(archive), userId);
+                : archiveMapper.toSummary(archive, (int) archiveItemRepository.countByArchive(archive), viewerId);
 
-        return postMapper.toDetail(post, regions, thumbnailUrl(archive, tripPlaces), false, sharedCourse, sharedArchive);
+        return postMapper.toDetail(post, regions, thumbnailUrl(archive, tripPlaces),
+                likedByMe(post, viewerId), sharedCourse, sharedArchive);
     }
 
     /**
@@ -210,6 +255,28 @@ public class PostService {
                 .map(PostRegion::getRegion).toList();
 
         return toDetail(post, regions, trip, tripPlaces, archive, viewerId);
+    }
+
+    /**
+     * 목록에 쓸 요약을 조립한다. {@code listMyLikedPosts} 같은 목록 오퍼레이션이 쓴다.
+     *
+     * <p>페이지 크기만큼(최대 50건) 항목마다 지역·트립장소·좋아요 여부를 따로 조회한다 —
+     * 개인 규모에서는 괜찮지만, 사용자당 게시물이 아주 많아지면 그때 다시 봐야 한다
+     * ({@code TripService.list()}와 같은 이유).
+     */
+    private PostSummary toSummary(Post post, Long viewerId) {
+        Trip trip = post.getSharedTrip();
+        Archive archive = post.getSharedArchive();
+        List<TripPlace> tripPlaces = trip == null ? List.of()
+                : tripPlaceRepository.findByTripOrderByDayNumberAscSortOrderAsc(trip);
+        List<Region> regions = postRegionRepository.findByPost(post).stream()
+                .map(PostRegion::getRegion).toList();
+
+        return postMapper.toSummary(post, regions, thumbnailUrl(archive, tripPlaces), likedByMe(post, viewerId));
+    }
+
+    private boolean likedByMe(Post post, Long viewerId) {
+        return postLikeRepository.existsById(new PostLikeId(post.getId(), viewerId));
     }
 
     private Long linkedArchiveId(Trip trip) {
