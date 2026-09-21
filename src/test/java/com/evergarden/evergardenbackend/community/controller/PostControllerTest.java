@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -155,5 +156,26 @@ class PostControllerTest {
                                 {"content":"고친 내용"}
                                 """))
                 .andExpect(status().isOk());
+    }
+
+    // ── 삭제(COMM-06) ────────────────────────────────────────
+
+    @Test
+    @DisplayName("없는 게시물을 삭제하면 서비스의 404가 그대로 전달된다")
+    void 삭제_없는게시물() throws Exception {
+        org.mockito.Mockito.doThrow(new BusinessException(ErrorCode.POST_NOT_FOUND))
+                .when(postService).delete(1L, 99L);
+
+        mvc.perform(delete("/posts/99").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("POST_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("삭제는 빈 성공 봉투를 돌려준다")
+    void 삭제_성공() throws Exception {
+        mvc.perform(delete("/posts/5").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").doesNotExist());
     }
 }

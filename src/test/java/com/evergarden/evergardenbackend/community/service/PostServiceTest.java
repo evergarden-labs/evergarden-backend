@@ -343,4 +343,53 @@ class PostServiceTest {
         verify(tripRepository, never()).findById(any());
         verify(regionRepository, never()).findById(any());
     }
+
+    // ── 삭제(COMM-06) ────────────────────────────────────────
+
+    @Test
+    @DisplayName("없는 게시물을 삭제하면 POST_NOT_FOUND")
+    void 삭제_없는게시물() {
+        given(postRepository.findById(99L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> postService.delete(USER_ID, 99L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.POST_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("이미 삭제된 게시물을 또 삭제하면 POST_NOT_FOUND")
+    void 삭제_이미삭제됨() {
+        Post post = post(5L);
+        post.delete();
+        given(postRepository.findById(5L)).willReturn(Optional.of(post));
+
+        assertThatThrownBy(() -> postService.delete(USER_ID, 5L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.POST_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("남의 게시물을 삭제하면 403 — 게시물 접근가드에 위임한다")
+    void 삭제_남의게시물() {
+        Post post = post(5L);
+        given(postRepository.findById(5L)).willReturn(Optional.of(post));
+        doThrow(new BusinessException(ErrorCode.NOT_RESOURCE_OWNER))
+                .when(postAccessGuard).checkOwner(post, USER_ID);
+
+        assertThatThrownBy(() -> postService.delete(USER_ID, 5L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.NOT_RESOURCE_OWNER);
+    }
+
+    @Test
+    @DisplayName("정상 삭제는 행을 지우지 않고 상태만 DELETED로 바꾼다")
+    void 삭제_정상() {
+        Post post = post(5L);
+        given(postRepository.findById(5L)).willReturn(Optional.of(post));
+
+        postService.delete(USER_ID, 5L);
+
+        assertThat(post.isDeleted()).isTrue();
+        verify(postRepository, never()).delete(any());
+    }
 }
