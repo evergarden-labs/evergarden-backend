@@ -12,8 +12,11 @@ import org.springframework.data.repository.query.Param;
 
 public interface PostRepository extends JpaRepository<Post, Long> {
 
-    /** 내가 쓴 게시물을 최신순으로(COMM-09). 삭제한 게시물은 뺀다. */
+    /** 내가 쓴 게시물을 최신순으로(COMM-09·20). 삭제한 게시물은 뺀다. */
     Page<Post> findByAuthor_IdAndStatusOrderByCreatedAtDesc(Long authorId, PostStatus status, Pageable pageable);
+
+    /** 공개 프로필의 {@code postCount}(COMM-20). */
+    long countByAuthor_IdAndStatus(Long authorId, PostStatus status);
 
     /**
      * 최신 피드(COMM-01·02). {@code regionCode}가 있으면 그 지역이 걸린 게시물만(스냅샷
