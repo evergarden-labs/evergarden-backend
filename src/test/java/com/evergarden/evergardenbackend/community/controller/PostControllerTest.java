@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -111,6 +112,28 @@ class PostControllerTest {
                                 {"content":"내용","tripId":1}
                                 """))
                 .andExpect(status().isUnauthorized());
+    }
+
+    // ── 조회(COMM-03·17) ─────────────────────────────────────
+
+    @Test
+    @DisplayName("없는 게시물 조회는 서비스의 404가 그대로 전달된다")
+    void 조회_없는게시물() throws Exception {
+        given(postService.get(eq(1L), eq(99L)))
+                .willThrow(new BusinessException(ErrorCode.POST_NOT_FOUND));
+
+        mvc.perform(get("/posts/99").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("POST_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("정상 조회는 로그인한 사용자 ID로 서비스에 위임한다")
+    void 조회_정상() throws Exception {
+        given(postService.get(eq(1L), eq(5L))).willReturn(mock(PostDetail.class));
+
+        mvc.perform(get("/posts/5").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk());
     }
 
     // ── 수정(COMM-05) ────────────────────────────────────────

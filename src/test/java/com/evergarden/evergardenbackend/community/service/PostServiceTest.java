@@ -280,6 +280,64 @@ class PostServiceTest {
         assertThat(result.sharedArchive()).isNotNull();
     }
 
+    // ── 조회(COMM-03·17) ─────────────────────────────────────
+
+    @Test
+    @DisplayName("없는 게시물 조회는 POST_NOT_FOUND")
+    void 조회_없는게시물() {
+        given(postRepository.findById(99L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> postService.get(USER_ID, 99L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.POST_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("삭제된 게시물 조회는 POST_NOT_FOUND — 원본만 삭제된 경우와 다르다")
+    void 조회_삭제된게시물() {
+        Post post = post(5L);
+        post.delete();
+        given(postRepository.findById(5L)).willReturn(Optional.of(post));
+
+        assertThatThrownBy(() -> postService.get(USER_ID, 5L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.POST_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("정상 조회는 공유된 코스 요약을 함께 돌려준다")
+    void 조회_정상_코스포함() {
+        Trip trip = trip(10L);
+        Post post = Post.builder().author(author).content("내용").shareType(ShareType.COURSE)
+                .sharedTrip(trip).build();
+        ReflectionTestUtils.setField(post, "id", 5L);
+        given(postRepository.findById(5L)).willReturn(Optional.of(post));
+        given(postRegionRepository.findByPost(post)).willReturn(List.of());
+        given(tripPlaceRepository.findByTripOrderByDayNumberAscSortOrderAsc(trip)).willReturn(List.of());
+        given(tripRegionRepository.findByTrip(trip)).willReturn(List.of());
+        given(tripMapper.toSummary(any(), any(), any(), any()))
+                .willReturn(mock(com.evergarden.evergardenbackend.trip.dto.TripSummary.class));
+
+        PostDetail result = postService.get(USER_ID, 5L);
+
+        assertThat(result.sharedCourse()).isNotNull();
+        assertThat(result.deletedShare()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("원본 코스가 삭제됐어도 게시물은 200이고 deletedShare에 COURSE가 담긴다(COMM-17)")
+    void 조회_원본코스삭제됨() {
+        Post post = Post.builder().author(author).content("내용").shareType(ShareType.COURSE).build();
+        ReflectionTestUtils.setField(post, "id", 5L);
+        given(postRepository.findById(5L)).willReturn(Optional.of(post));
+        given(postRegionRepository.findByPost(post)).willReturn(List.of());
+
+        PostDetail result = postService.get(USER_ID, 5L);
+
+        assertThat(result.sharedCourse()).isNull();
+        assertThat(result.deletedShare()).containsExactly(ShareType.COURSE);
+    }
+
     // ── 수정(COMM-05) ────────────────────────────────────────
 
     private Post post(Long id) {
