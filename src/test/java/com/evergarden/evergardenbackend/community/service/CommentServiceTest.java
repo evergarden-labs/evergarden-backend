@@ -153,8 +153,9 @@ class CommentServiceTest {
         Comment comment = comment(10L);
         Comment reply = Comment.replyTo(comment, author, "답글");
         given(commentRepository.findById(10L)).willReturn(Optional.of(comment));
-        given(commentRepository.countByParent(comment)).willReturn(1L);
-        given(commentRepository.findTop3ByParentOrderByIdAsc(comment)).willReturn(List.of(reply));
+        given(commentRepository.countByParentAndStatus(comment, CommentStatus.ACTIVE)).willReturn(1L);
+        given(commentRepository.findTop3ByParentAndStatusOrderByIdAsc(comment, CommentStatus.ACTIVE))
+                .willReturn(List.of(reply));
         CommentWriteRequest request = new CommentWriteRequest("고친 내용");
 
         CommentResponse result = commentService.update(USER_ID, 10L, request);
@@ -285,6 +286,8 @@ class CommentServiceTest {
     @DisplayName("정상 답글 삭제는 상태만 바꾼다")
     void 답글삭제_정상() {
         Comment parentComment = comment(10L);
+        Post post = parentComment.getPost();
+        post.increaseCommentCount();
         Comment reply = Comment.replyTo(parentComment, author, "답글");
         ReflectionTestUtils.setField(reply, "id", 11L);
         given(commentRepository.findById(11L)).willReturn(Optional.of(reply));
@@ -292,6 +295,7 @@ class CommentServiceTest {
         commentService.deleteReply(USER_ID, 11L);
 
         assertThat(reply.isDeleted()).isTrue();
+        assertThat(post.getCommentCount()).isZero();
         verify(commentRepository, never()).delete(any());
     }
 

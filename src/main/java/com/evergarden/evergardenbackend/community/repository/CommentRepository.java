@@ -1,6 +1,7 @@
 package com.evergarden.evergardenbackend.community.repository;
 
 import com.evergarden.evergardenbackend.community.entity.Comment;
+import com.evergarden.evergardenbackend.community.entity.CommentStatus;
 import com.evergarden.evergardenbackend.community.entity.Post;
 import java.util.List;
 import org.springframework.data.domain.Pageable;
@@ -10,10 +11,14 @@ import org.springframework.data.repository.query.Param;
 
 public interface CommentRepository extends JpaRepository<Comment, Long> {
 
-    long countByParent(Comment parent);
+    /**
+     * 삭제된 대댓글은 목록에서 완전히 빠져야 해서(COMM-16 — 댓글과 달리 자리를
+     * 안 남김) 대댓글 수·미리보기·목록 전부 {@code ACTIVE}만 센다.
+     */
+    long countByParentAndStatus(Comment parent, CommentStatus status);
 
     /** 댓글 상세에 앞의 몇 개만 미리 담는 용도(작성 순서). 나머지는 {@code listReplies}로. */
-    List<Comment> findTop3ByParentOrderByIdAsc(Comment parent);
+    List<Comment> findTop3ByParentAndStatusOrderByIdAsc(Comment parent, CommentStatus status);
 
     /**
      * 게시물의 최상위 댓글을 작성 순서로(COMM-03). 삭제된 댓글도 "삭제된 댓글입니다"로
@@ -28,10 +33,14 @@ public interface CommentRepository extends JpaRepository<Comment, Long> {
             """)
     List<Comment> findTopLevelAfter(@Param("post") Post post, @Param("cursorId") Long cursorId, Pageable pageable);
 
-    /** 댓글의 대댓글을 작성 순서로(COMM-03). 마찬가지로 삭제 여부로 거르지 않는다. */
+    /**
+     * 댓글의 대댓글을 작성 순서로(COMM-03). 댓글과 달리 삭제된 대댓글은 목록에서
+     * 완전히 빠진다(COMM-16) — 아래에 달릴 것이 없어 자리를 남길 이유가 없어서다.
+     */
     @Query("""
             SELECT c FROM Comment c JOIN FETCH c.author
             WHERE c.parent = :parent
+              AND c.status = com.evergarden.evergardenbackend.community.entity.CommentStatus.ACTIVE
               AND (:cursorId IS NULL OR c.id > :cursorId)
             ORDER BY c.id ASC
             """)

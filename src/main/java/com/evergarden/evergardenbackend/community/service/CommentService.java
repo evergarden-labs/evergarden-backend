@@ -4,6 +4,7 @@ import com.evergarden.evergardenbackend.community.dto.CommentResponse;
 import com.evergarden.evergardenbackend.community.dto.CommentWriteRequest;
 import com.evergarden.evergardenbackend.community.dto.Reply;
 import com.evergarden.evergardenbackend.community.entity.Comment;
+import com.evergarden.evergardenbackend.community.entity.CommentStatus;
 import com.evergarden.evergardenbackend.community.entity.Post;
 import com.evergarden.evergardenbackend.community.repository.CommentRepository;
 import com.evergarden.evergardenbackend.community.repository.PostRepository;
@@ -84,8 +85,8 @@ public class CommentService {
 
     /**
      * 댓글을 지운다(COMM-13). 행을 지우지 않고 {@code status}만 바꾸고 내용을 비운다(ADR-007) —
-     * 대댓글이 달려 있으면 자리를 남겨야 그 대댓글들이 안 사라진다. 게시물의
-     * {@code commentCount}는 대댓글까지 포함한 수라 여기서 건드리지 않는다.
+     * 대댓글이 달려 있으면 자리를 남겨야 그 대댓글들이 안 사라진다. 화면에는 "삭제된
+     * 댓글입니다"로 계속 보이므로, 게시물의 {@code commentCount}는 건드리지 않는다.
      */
     public void delete(Long userId, Long commentId) {
         deactivate(userId, commentId);
@@ -113,9 +114,14 @@ public class CommentService {
         return commentMapper.toReply(updateContent(userId, replyId, request));
     }
 
-    /** 대댓글을 지운다(COMM-16). 아래에 달릴 것이 없어 댓글과 달리 자리를 남길 필요는 없지만, 정책을 통일해 상태만 바꾼다. */
+    /**
+     * 대댓글을 지운다(COMM-16). 댓글과 달리 목록에서 완전히 빠진다 — 아래에 달릴 것이
+     * 없어 자리를 남길 이유가 없어서다. 화면에서 사라지는 만큼, 게시물의
+     * {@code commentCount}(대댓글 포함 수)도 같이 줄인다.
+     */
     public void deleteReply(Long userId, Long replyId) {
-        deactivate(userId, replyId);
+        Comment reply = deactivate(userId, replyId);
+        reply.getPost().decreaseCommentCount();
     }
 
     private Comment updateContent(Long userId, Long commentId, CommentWriteRequest request) {
@@ -125,10 +131,11 @@ public class CommentService {
         return comment;
     }
 
-    private void deactivate(Long userId, Long commentId) {
+    private Comment deactivate(Long userId, Long commentId) {
         Comment comment = findActiveComment(commentId);
         commentAccessGuard.checkOwner(comment, userId);
         comment.delete();
+        return comment;
     }
 
     private Post findActivePost(Long postId) {
@@ -150,8 +157,9 @@ public class CommentService {
     }
 
     private CommentResponse toResponse(Comment comment) {
-        int replyCount = (int) commentRepository.countByParent(comment);
-        List<Reply> repliesPreview = commentRepository.findTop3ByParentOrderByIdAsc(comment).stream()
+        int replyCount = (int) commentRepository.countByParentAndStatus(comment, CommentStatus.ACTIVE);
+        List<Reply> repliesPreview = commentRepository
+                .findTop3ByParentAndStatusOrderByIdAsc(comment, CommentStatus.ACTIVE).stream()
                 .map(commentMapper::toReply).toList();
         return commentMapper.toResponse(comment, replyCount, repliesPreview);
     }
