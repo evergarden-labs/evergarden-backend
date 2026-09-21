@@ -16,6 +16,7 @@ import com.evergarden.evergardenbackend.community.entity.Post;
 import com.evergarden.evergardenbackend.community.entity.PostLike;
 import com.evergarden.evergardenbackend.community.entity.PostLikeId;
 import com.evergarden.evergardenbackend.community.entity.PostRegion;
+import com.evergarden.evergardenbackend.community.entity.PostStatus;
 import com.evergarden.evergardenbackend.community.entity.RegionSource;
 import com.evergarden.evergardenbackend.community.entity.ShareType;
 import com.evergarden.evergardenbackend.community.repository.PostLikeRepository;
@@ -188,6 +189,13 @@ public class PostService {
     public Page<PostSummary> listMyLikedPosts(Long userId, Pageable pageable) {
         return postLikeRepository.findActiveLikedByUser(userId, pageable)
                 .map(postLike -> toSummary(postLike.getPost(), userId));
+    }
+
+    /** 내가 작성한 게시물을 최신순으로(COMM-09). 삭제한 게시물은 뺀다. */
+    @Transactional(readOnly = true)
+    public Page<PostSummary> listMyPosts(Long userId, Pageable pageable) {
+        return postRepository.findByAuthor_IdAndStatusOrderByCreatedAtDesc(userId, PostStatus.ACTIVE, pageable)
+                .map(post -> toSummary(post, userId));
     }
 
     private Post findActivePost(Long postId) {
