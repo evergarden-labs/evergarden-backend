@@ -545,6 +545,7 @@ class PostServiceTest {
     @DisplayName("내 게시물 목록은 최신순으로 요약을 돌려준다")
     void 내게시물목록_조회() {
         Post post = post(5L);
+        given(userRepository.findById(USER_ID)).willReturn(Optional.of(author));
         given(postRepository.findByAuthor_IdAndStatusOrderByCreatedAtDesc(eq(USER_ID), eq(PostStatus.ACTIVE), any()))
                 .willReturn(new org.springframework.data.domain.PageImpl<>(List.of(post)));
         given(postRegionRepository.findByPost(post)).willReturn(List.of());
@@ -655,5 +656,50 @@ class PostServiceTest {
         assertThatThrownBy(() -> postService.listPosts(USER_ID, PostSortType.POPULAR, "@@broken@@", 20))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_REQUEST);
+    }
+
+    // ── 작성자의 게시물 목록(COMM-20) ────────────────────────
+
+    @Test
+    @DisplayName("없는 작성자의 게시물을 조회하면 USER_NOT_FOUND")
+    void 작성자게시물_없는사용자() {
+        given(userRepository.findById(99L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> postService.listUserPosts(99L, USER_ID,
+                org.springframework.data.domain.PageRequest.of(0, 20)))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.USER_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("탈퇴한 작성자의 게시물을 조회하면 USER_NOT_FOUND")
+    void 작성자게시물_탈퇴한사용자() {
+        User withdrawnAuthor = user(2L);
+        withdrawnAuthor.withdraw(java.time.LocalDateTime.now());
+        given(userRepository.findById(2L)).willReturn(Optional.of(withdrawnAuthor));
+
+        assertThatThrownBy(() -> postService.listUserPosts(2L, USER_ID,
+                org.springframework.data.domain.PageRequest.of(0, 20)))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.USER_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("정상 조회는 보는 사람 기준으로 likedByMe를 계산한다")
+    void 작성자게시물_정상() {
+        User author2 = user(2L);
+        Post post = Post.builder().author(author2).content("다른 사람 글").shareType(ShareType.ARCHIVE).build();
+        ReflectionTestUtils.setField(post, "id", 7L);
+        given(userRepository.findById(2L)).willReturn(Optional.of(author2));
+        given(postRepository.findByAuthor_IdAndStatusOrderByCreatedAtDesc(eq(2L), eq(PostStatus.ACTIVE), any()))
+                .willReturn(new org.springframework.data.domain.PageImpl<>(List.of(post)));
+        given(postRegionRepository.findByPost(post)).willReturn(List.of());
+        given(postLikeRepository.existsById(any())).willReturn(true);
+
+        Page<PostSummary> result = postService.listUserPosts(2L, USER_ID,
+                org.springframework.data.domain.PageRequest.of(0, 20));
+
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).likedByMe()).isTrue();
     }
 }
