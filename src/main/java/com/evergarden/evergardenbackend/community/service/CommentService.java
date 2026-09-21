@@ -40,12 +40,7 @@ public class CommentService {
 
     /** 댓글 본문을 고친다(COMM-12). */
     public CommentResponse update(Long userId, Long commentId, CommentWriteRequest request) {
-        Comment comment = findActiveComment(commentId);
-        commentAccessGuard.checkOwner(comment, userId);
-
-        comment.updateContent(request.content());
-
-        return toResponse(comment);
+        return toResponse(updateContent(userId, commentId, request));
     }
 
     /**
@@ -54,6 +49,44 @@ public class CommentService {
      * {@code commentCount}는 대댓글까지 포함한 수라 여기서 건드리지 않는다.
      */
     public void delete(Long userId, Long commentId) {
+        deactivate(userId, commentId);
+    }
+
+    /**
+     * 댓글에 답글을 단다(COMM-14). 깊이는 1단계까지다 — 부모가 이미 대댓글이면
+     * {@code INVALID_REQUEST}다({@link Comment#replyTo}의 제약을 여기서 실제로 막는다).
+     */
+    public Reply createReply(Long userId, Long parentCommentId, CommentWriteRequest request) {
+        Comment parent = findActiveComment(parentCommentId);
+        if (parent.isReply()) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST);
+        }
+
+        Comment reply = Comment.replyTo(parent, userRepository.getReferenceById(userId), request.content());
+        commentRepository.save(reply);
+        reply.getPost().increaseCommentCount();
+
+        return commentMapper.toReply(reply);
+    }
+
+    /** 대댓글 본문을 고친다(COMM-15). 저장소·검증 로직은 댓글과 같다. */
+    public Reply updateReply(Long userId, Long replyId, CommentWriteRequest request) {
+        return commentMapper.toReply(updateContent(userId, replyId, request));
+    }
+
+    /** 대댓글을 지운다(COMM-16). 아래에 달릴 것이 없어 댓글과 달리 자리를 남길 필요는 없지만, 정책을 통일해 상태만 바꾼다. */
+    public void deleteReply(Long userId, Long replyId) {
+        deactivate(userId, replyId);
+    }
+
+    private Comment updateContent(Long userId, Long commentId, CommentWriteRequest request) {
+        Comment comment = findActiveComment(commentId);
+        commentAccessGuard.checkOwner(comment, userId);
+        comment.updateContent(request.content());
+        return comment;
+    }
+
+    private void deactivate(Long userId, Long commentId) {
         Comment comment = findActiveComment(commentId);
         commentAccessGuard.checkOwner(comment, userId);
         comment.delete();
