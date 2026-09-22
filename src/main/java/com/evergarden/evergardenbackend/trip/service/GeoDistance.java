@@ -9,16 +9,18 @@ import java.math.BigDecimal;
  * 따라간 거리가 아니라 지구 표면을 따라 잰 최단 거리라, 실제보다 짧게 나온다.
  *
  * <p>{@link TripRouteService}(동선 조회)와 자동 배치가 같은 계산을 써야 두 화면의
- * 숫자가 일치한다(ADR-043) — 그래서 트립 패키지 안에 하나만 둔다.
+ * 숫자가 일치한다(ADR-043) — 그래서 좌표 두 쌍짜리 계산은 패키지 밖에서도(타임캡슐
+ * 위치 해제 판정, TC-04) 재사용하도록 공개해 두고, 트립 전용 타입을 받는 오버로드만
+ * 패키지 안에 둔다.
  */
-final class GeoDistance {
+public final class GeoDistance {
 
     private static final double EARTH_RADIUS_METERS = 6_371_000;
 
     private GeoDistance() {
     }
 
-    static long metersBetween(BigDecimal lat1, BigDecimal lng1, BigDecimal lat2, BigDecimal lng2) {
+    public static long metersBetween(BigDecimal lat1, BigDecimal lng1, BigDecimal lat2, BigDecimal lng2) {
         double phi1 = Math.toRadians(lat1.doubleValue());
         double phi2 = Math.toRadians(lat2.doubleValue());
         double deltaPhi = Math.toRadians(lat2.subtract(lat1).doubleValue());
