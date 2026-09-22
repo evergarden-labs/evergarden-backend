@@ -137,6 +137,32 @@ class TimeCapsuleServiceTest {
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_UNLOCK_CONDITION);
     }
 
+    @Test
+    @DisplayName("DATE인데 위치 필드까지 같이 보내면 INVALID_UNLOCK_CONDITION — 명세의 \"둘 다 보내면\" 케이스")
+    void DATE인데_위치필드도_같이보냄() {
+        TimeCapsuleCreateRequest request = new TimeCapsuleCreateRequest(
+                "제주 여행 기억", "그날의 기억", UnlockType.DATE,
+                LocalDate.now().plusDays(30), 37.5, 126.9, 100, null, null);
+
+        assertThatThrownBy(() -> timeCapsuleService.create(USER_ID, request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_UNLOCK_CONDITION);
+        verify(timeCapsuleRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("LOCATION인데 unlockDate까지 같이 보내면 INVALID_UNLOCK_CONDITION — 명세의 \"둘 다 보내면\" 케이스")
+    void LOCATION인데_날짜필드도_같이보냄() {
+        TimeCapsuleCreateRequest request = new TimeCapsuleCreateRequest(
+                "제주 여행 기억", "그날의 기억", UnlockType.LOCATION,
+                LocalDate.now().plusDays(30), 37.5, 126.9, 100, "한라산", null);
+
+        assertThatThrownBy(() -> timeCapsuleService.create(USER_ID, request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_UNLOCK_CONDITION);
+        verify(timeCapsuleRepository, never()).save(any());
+    }
+
     // ── 미디어 검증 ──────────────────────────────────────────
 
     @Test

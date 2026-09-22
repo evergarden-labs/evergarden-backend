@@ -265,11 +265,18 @@ public class TimeCapsuleService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.TIME_CAPSULE_NOT_FOUND));
     }
 
+    /**
+     * 해제 조건은 {@code unlockType}이 고른 쪽 필드만 채워야 한다 — 반대쪽 필드까지
+     * 같이 오면(둘 다 보냄) DB CHECK는 안 걸려도(팩토리가 필요한 필드만 복사해서) 스펙이
+     * 명시한 {@code INVALID_UNLOCK_CONDITION}이라, 여기서 먼저 걸러야 한다.
+     */
     private TimeCapsule buildCapsule(Long userId, TimeCapsuleCreateRequest request) {
         User owner = userRepository.getReferenceById(userId);
+        boolean hasLocationFields = request.unlockLat() != null || request.unlockLng() != null
+                || request.unlockRadiusMeters() != null;
         return switch (request.unlockType()) {
             case DATE -> {
-                if (request.unlockDate() == null) {
+                if (request.unlockDate() == null || hasLocationFields) {
                     throw new BusinessException(ErrorCode.INVALID_UNLOCK_CONDITION);
                 }
                 if (!request.unlockDate().isAfter(LocalDate.now())) {
@@ -279,7 +286,7 @@ public class TimeCapsuleService {
             }
             case LOCATION -> {
                 if (request.unlockLat() == null || request.unlockLng() == null
-                        || request.unlockRadiusMeters() == null) {
+                        || request.unlockRadiusMeters() == null || request.unlockDate() != null) {
                     throw new BusinessException(ErrorCode.INVALID_UNLOCK_CONDITION);
                 }
                 yield TimeCapsule.sealAtPlace(owner, request.title(), request.content(),
