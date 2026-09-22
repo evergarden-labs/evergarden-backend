@@ -300,15 +300,21 @@ public class TimeCapsuleService {
      * {@code READY} 상태가 아니거나 내가 올린 게 아니면 {@code MEDIA_NOT_FOUND}다 — 명세에
      * {@code createTimeCapsule}의 403이 없어서, 남의 미디어라는 걸 굳이 알려주지 않고
      * "없는 것"과 똑같이 취급한다({@code ArchiveItemService}가 이 경우 403을 따로 쓰는 것과 다르다).
+     *
+     * <p>{@code mediaIds}에 중복이 와도 하나로 본다 — {@code TimeCapsuleMedia}가
+     * {@code (capsuleId, mediaId)} 복합키라 중복을 그대로 두면 {@code merge()}가
+     * "마지막 것만 남기는" 우연한 동작에 기대게 된다(같은 이유로 {@code PostLike}가
+     * 실제 버그가 났던 지점). 여기서 미리 걸러 그 우연에 기대지 않는다.
      */
     private List<Media> resolveMedia(Long userId, List<Long> mediaIds) {
         if (mediaIds == null || mediaIds.isEmpty()) {
             return List.of();
         }
-        Map<Long, Media> byId = mediaRepository.findAllById(mediaIds).stream()
+        List<Long> distinctIds = mediaIds.stream().distinct().toList();
+        Map<Long, Media> byId = mediaRepository.findAllById(distinctIds).stream()
                 .collect(Collectors.toMap(Media::getId, m -> m));
         List<Media> media = new ArrayList<>();
-        for (Long mediaId : mediaIds) {
+        for (Long mediaId : distinctIds) {
             Media found = byId.get(mediaId);
             if (found == null || !found.isReady() || !found.isUploadedBy(userId)) {
                 throw new BusinessException(ErrorCode.MEDIA_NOT_FOUND);

@@ -240,6 +240,20 @@ class TimeCapsuleServiceTest {
         assertThat(captor.getValue().get(1).getSortOrder()).isEqualTo((short) 2);
     }
 
+    @Test
+    @DisplayName("mediaIds에 같은 id가 중복되면 하나로 본다")
+    void 정상생성_미디어중복() {
+        Media media1 = readyMedia(10L, USER_ID);
+        given(mediaRepository.findAllById(List.of(10L))).willReturn(List.of(media1));
+
+        TimeCapsuleCreateRequest request = dateRequest(LocalDate.now().plusDays(30), List.of(10L, 10L, 10L));
+        timeCapsuleService.create(USER_ID, request);
+
+        ArgumentCaptor<List<TimeCapsuleMedia>> captor = ArgumentCaptor.forClass(List.class);
+        verify(timeCapsuleMediaRepository).saveAll(captor.capture());
+        assertThat(captor.getValue()).hasSize(1);
+    }
+
     // ── 조회(TC-03·06) ───────────────────────────────────────
 
     private TimeCapsule capsule(Long id) {
