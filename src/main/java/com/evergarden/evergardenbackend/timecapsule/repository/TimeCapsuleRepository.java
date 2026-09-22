@@ -1,6 +1,8 @@
 package com.evergarden.evergardenbackend.timecapsule.repository;
 
 import com.evergarden.evergardenbackend.timecapsule.entity.TimeCapsule;
+import com.evergarden.evergardenbackend.timecapsule.entity.TimeCapsuleStatus;
+import com.evergarden.evergardenbackend.timecapsule.entity.UnlockType;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.data.domain.Pageable;
@@ -9,6 +11,9 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface TimeCapsuleRepository extends JpaRepository<TimeCapsule, Long> {
+
+    /** 위치 해제 판정(TC-04) 대상 — 아직 안 열렸고 위치 조건인 것만. 개인 규모라 페이지 없이 전부 본다. */
+    List<TimeCapsule> findByOwner_IdAndUnlockTypeAndStatus(Long ownerId, UnlockType unlockType, TimeCapsuleStatus status);
 
     /** 봉인·해제 함께, 최신순(TC-02). 커서는 id 내림차순(ADR-011·ADR-058). */
     @Query("""
