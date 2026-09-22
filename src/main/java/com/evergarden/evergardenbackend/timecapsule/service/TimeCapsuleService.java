@@ -167,12 +167,33 @@ public class TimeCapsuleService {
                 continue;
             }
             capsule.markUnlockable();
-            notificationService.notify(capsule.getOwner(), NotificationType.CAPSULE_UNLOCK,
-                    "타임캡슐을 열어볼 수 있어요", "\"" + capsule.getTitle() + "\" 캡슐을 열어볼 수 있게 됐어요.",
-                    NotificationTargetType.TIME_CAPSULE, capsule.getId());
+            notifyUnlockable(capsule);
             newlyUnlockable.add(toSummary(capsule));
         }
         return newlyUnlockable;
+    }
+
+    /**
+     * 날짜 해제 배치(TC-04의 날짜 쪽, 스케줄러가 매일 호출). 위치 조건과 달리 클라이언트가
+     * 알려줄 게 없어 서버가 스스로 오늘 날짜를 기준으로 판정한다. 사용자별로 나뉘지 않고
+     * 전체를 한 번에 훑는다는 점만 {@link #checkLocationUnlock}과 다르다.
+     *
+     * @return 새로 {@code UNLOCKABLE}이 된 캡슐 수(스케줄러가 로그를 남기는 용도)
+     */
+    public int unlockDueDateCapsules(LocalDate today) {
+        List<TimeCapsule> due = timeCapsuleRepository.findByUnlockTypeAndStatusAndUnlockDateLessThanEqual(
+                UnlockType.DATE, TimeCapsuleStatus.SEALED, today);
+        for (TimeCapsule capsule : due) {
+            capsule.markUnlockable();
+            notifyUnlockable(capsule);
+        }
+        return due.size();
+    }
+
+    private void notifyUnlockable(TimeCapsule capsule) {
+        notificationService.notify(capsule.getOwner(), NotificationType.CAPSULE_UNLOCK,
+                "타임캡슐을 열어볼 수 있어요", "\"" + capsule.getTitle() + "\" 캡슐을 열어볼 수 있게 됐어요.",
+                NotificationTargetType.TIME_CAPSULE, capsule.getId());
     }
 
     /**
