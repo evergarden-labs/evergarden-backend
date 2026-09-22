@@ -3,6 +3,7 @@ package com.evergarden.evergardenbackend.timecapsule.repository;
 import com.evergarden.evergardenbackend.timecapsule.entity.TimeCapsule;
 import com.evergarden.evergardenbackend.timecapsule.entity.TimeCapsuleStatus;
 import com.evergarden.evergardenbackend.timecapsule.entity.UnlockType;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.data.domain.Pageable;
@@ -14,6 +15,14 @@ public interface TimeCapsuleRepository extends JpaRepository<TimeCapsule, Long> 
 
     /** 위치 해제 판정(TC-04) 대상 — 아직 안 열렸고 위치 조건인 것만. 개인 규모라 페이지 없이 전부 본다. */
     List<TimeCapsule> findByOwner_IdAndUnlockTypeAndStatus(Long ownerId, UnlockType unlockType, TimeCapsuleStatus status);
+
+    /**
+     * 날짜 해제 배치 대상 — 전체 사용자를 통틀어, 날짜 조건이고 아직 안 열렸고
+     * {@code unlockDate}가 오늘이거나 지난 것. 매일 한 번 도는 배치라 개수가 많지
+     * 않을 것으로 보고 페이지 없이 전부 가져온다.
+     */
+    List<TimeCapsule> findByUnlockTypeAndStatusAndUnlockDateLessThanEqual(
+            UnlockType unlockType, TimeCapsuleStatus status, LocalDate date);
 
     /** 봉인·해제 함께, 최신순(TC-02). 커서는 id 내림차순(ADR-011·ADR-058). */
     @Query("""
