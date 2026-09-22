@@ -141,6 +141,11 @@ public class TimeCapsuleService {
         return new CursorPage<>(summaries, meta);
     }
 
+    /**
+     * 목록에 쓸 요약을 조립한다. 열어본 항목마다 첫 사진을 따로 조회한다(N+1) —
+     * 개인 규모에서는 괜찮지만, 열어본 캡슐이 아주 많아지면 그때 다시 봐야 한다
+     * ({@code PostService.toSummary()}와 같은 이유).
+     */
     private TimeCapsuleSummary toSummary(TimeCapsule capsule) {
         return timeCapsuleMapper.toSummary(capsule, capsule.isOpened() ? firstThumbnailUrl(capsule) : null);
     }
