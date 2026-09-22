@@ -86,6 +86,26 @@ public class TimeCapsuleService {
     }
 
     /**
+     * 캡슐을 연다(TC-05). {@code UNLOCKABLE}이어야만 열 수 있다 — 아직 해제 조건이
+     * 안 됐으면 {@code CAPSULE_NOT_UNLOCKABLE}(해제 조건 종류를 details에 담는다),
+     * 이미 열었으면 대신 {@code GET}을 쓰라는 뜻으로 {@code CAPSULE_ALREADY_OPENED}다.
+     */
+    public TimeCapsuleDetail open(Long userId, Long capsuleId) {
+        TimeCapsule capsule = findCapsule(capsuleId);
+        accessGuard.checkOwner(capsule, userId);
+
+        if (capsule.isOpened()) {
+            throw new BusinessException(ErrorCode.CAPSULE_ALREADY_OPENED);
+        }
+        if (!capsule.isUnlockable()) {
+            throw new BusinessException(ErrorCode.CAPSULE_NOT_UNLOCKABLE,
+                    Map.of("unlockType", capsule.getUnlockType()));
+        }
+        capsule.open(LocalDateTime.now());
+        return toDetail(capsule);
+    }
+
+    /**
      * 봉인·해제 함께, 최신순(TC-02). 목록엔 내용을 안 담으니 {@code toSummary()}가
      * {@code toDetail()}보다 훨씬 가볍다 — 열어본 것만 첫 사진을 확인하면 된다.
      */
