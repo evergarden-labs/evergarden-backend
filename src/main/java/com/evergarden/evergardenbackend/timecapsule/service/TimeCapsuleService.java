@@ -2,12 +2,16 @@ package com.evergarden.evergardenbackend.timecapsule.service;
 
 import com.evergarden.evergardenbackend.global.exception.BusinessException;
 import com.evergarden.evergardenbackend.global.exception.ErrorCode;
+import com.evergarden.evergardenbackend.global.response.CursorMeta;
+import com.evergarden.evergardenbackend.global.response.CursorPage;
+import com.evergarden.evergardenbackend.global.util.CursorCodec;
 import com.evergarden.evergardenbackend.media.dto.MediaResponse;
 import com.evergarden.evergardenbackend.media.entity.Media;
 import com.evergarden.evergardenbackend.media.repository.MediaRepository;
 import com.evergarden.evergardenbackend.media.service.MediaMapper;
 import com.evergarden.evergardenbackend.timecapsule.dto.TimeCapsuleCreateRequest;
 import com.evergarden.evergardenbackend.timecapsule.dto.TimeCapsuleDetail;
+import com.evergarden.evergardenbackend.timecapsule.dto.TimeCapsuleSummary;
 import com.evergarden.evergardenbackend.timecapsule.entity.TimeCapsule;
 import com.evergarden.evergardenbackend.timecapsule.entity.TimeCapsuleMedia;
 import com.evergarden.evergardenbackend.timecapsule.repository.TimeCapsuleMediaRepository;
@@ -15,12 +19,16 @@ import com.evergarden.evergardenbackend.timecapsule.repository.TimeCapsuleReposi
 import com.evergarden.evergardenbackend.user.entity.User;
 import com.evergarden.evergardenbackend.user.repository.UserRepository;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -70,6 +78,46 @@ public class TimeCapsuleService {
     }
 
     /**
+     * 봉인·해제 함께, 최신순(TC-02). 목록엔 내용을 안 담으니 {@code toSummary()}가
+     * {@code toDetail()}보다 훨씬 가볍다 — 열어본 것만 첫 사진을 확인하면 된다.
+     */
+    @Transactional(readOnly = true)
+    public CursorPage<TimeCapsuleSummary> list(Long userId, String cursor, int size) {
+        Long cursorId = CursorCodec.decode(cursor);
+        List<TimeCapsule> fetched = timeCapsuleRepository.findAllByOwner(userId, cursorId, PageRequest.of(0, size + 1));
+
+        boolean hasNext = fetched.size() > size;
+        List<TimeCapsule> page = hasNext ? fetched.subList(0, size) : fetched;
+        List<TimeCapsuleSummary> summaries = page.stream().map(this::toSummary).toList();
+
+        CursorMeta meta = !hasNext ? CursorMeta.last()
+                : CursorMeta.of(CursorCodec.encode(page.get(page.size() - 1).getId()));
+        return new CursorPage<>(summaries, meta);
+    }
+
+    /** 열어본 것만 최근에 연 순서로(TC-06). */
+    @Transactional(readOnly = true)
+    public CursorPage<TimeCapsuleSummary> listOpened(Long userId, String cursor, int size) {
+        OpenedCursor decoded = decodeOpenedCursor(cursor);
+        LocalDateTime cursorOpenedAt = decoded == null ? null : decoded.openedAt();
+        Long cursorId = decoded == null ? null : decoded.id();
+        List<TimeCapsule> fetched = timeCapsuleRepository.findOpenedByOwner(
+                userId, cursorOpenedAt, cursorId, PageRequest.of(0, size + 1));
+
+        boolean hasNext = fetched.size() > size;
+        List<TimeCapsule> page = hasNext ? fetched.subList(0, size) : fetched;
+        List<TimeCapsuleSummary> summaries = page.stream().map(this::toSummary).toList();
+
+        CursorMeta meta = !hasNext ? CursorMeta.last()
+                : CursorMeta.of(encodeOpenedCursor(page.get(page.size() - 1)));
+        return new CursorPage<>(summaries, meta);
+    }
+
+    private TimeCapsuleSummary toSummary(TimeCapsule capsule) {
+        return timeCapsuleMapper.toSummary(capsule, capsule.isOpened() ? firstThumbnailUrl(capsule) : null);
+    }
+
+    /**
      * {@code OPENED}일 때만 실제로 사진·영상을 조회한다 — 봉인 상태에서 미리 불러올
      * 이유가 없다. {@code thumbnailUrl}도 같은 기준으로, 열어본 캡슐의 첫 번째 사진에서
      * 뽑는다({@code TripMapper.thumbnailUrl()}과 같은 "썸네일 없으면 원본" 우선순위).
@@ -83,6 +131,41 @@ public class TimeCapsuleService {
         String thumbnailUrl = media.isEmpty() ? null
                 : media.get(0).thumbnailUrl() != null ? media.get(0).thumbnailUrl() : media.get(0).url();
         return timeCapsuleMapper.toDetail(capsule, thumbnailUrl, media);
+    }
+
+    private String firstThumbnailUrl(TimeCapsule capsule) {
+        List<TimeCapsuleMedia> items = timeCapsuleMediaRepository.findByCapsuleOrderBySortOrderAsc(capsule);
+        if (items.isEmpty()) {
+            return null;
+        }
+        MediaResponse first = mediaMapper.toResponse(items.get(0).getMedia());
+        return first.thumbnailUrl() != null ? first.thumbnailUrl() : first.url();
+    }
+
+    /**
+     * 해제 기록 커서. {@code (openedAt, id)} 두 값을 같이 실어야 한다 — 정렬 기준과 다른
+     * 값 하나만 커서로 쓰면 같은 순간 열린 캡슐들 사이에서 항목이 통째로 빠질 수 있다
+     * (인기 피드 커서와 같은 함정, {@code PostService.PopularCursor} 참고).
+     */
+    private record OpenedCursor(LocalDateTime openedAt, Long id) {
+    }
+
+    private String encodeOpenedCursor(TimeCapsule capsule) {
+        String raw = capsule.getOpenedAt() + "_" + capsule.getId();
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(raw.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private OpenedCursor decodeOpenedCursor(String cursor) {
+        if (cursor == null) {
+            return null;
+        }
+        try {
+            String raw = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
+            int sep = raw.lastIndexOf('_');
+            return new OpenedCursor(LocalDateTime.parse(raw.substring(0, sep)), Long.valueOf(raw.substring(sep + 1)));
+        } catch (RuntimeException e) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST);
+        }
     }
 
     /**
