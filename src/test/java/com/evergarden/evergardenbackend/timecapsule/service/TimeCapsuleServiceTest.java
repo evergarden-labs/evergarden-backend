@@ -10,12 +10,15 @@ import static org.mockito.Mockito.verify;
 
 import com.evergarden.evergardenbackend.global.exception.BusinessException;
 import com.evergarden.evergardenbackend.global.exception.ErrorCode;
+import com.evergarden.evergardenbackend.media.dto.MediaResponse;
 import com.evergarden.evergardenbackend.media.entity.Media;
 import com.evergarden.evergardenbackend.media.entity.MediaStatus;
 import com.evergarden.evergardenbackend.media.entity.MediaType;
 import com.evergarden.evergardenbackend.media.repository.MediaRepository;
+import com.evergarden.evergardenbackend.media.service.MediaMapper;
 import com.evergarden.evergardenbackend.timecapsule.dto.TimeCapsuleCreateRequest;
 import com.evergarden.evergardenbackend.timecapsule.dto.TimeCapsuleDetail;
+import com.evergarden.evergardenbackend.timecapsule.entity.TimeCapsule;
 import com.evergarden.evergardenbackend.timecapsule.entity.TimeCapsuleMedia;
 import com.evergarden.evergardenbackend.timecapsule.entity.UnlockType;
 import com.evergarden.evergardenbackend.timecapsule.repository.TimeCapsuleMediaRepository;
@@ -31,7 +34,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 
-/** 타임캡슐 생성(TC-01)의 해제 조건 검증·미디어 확인 순서를 확인한다. */
+/** 타임캡슐 생성·조회(TC-01·03·06)의 해제 조건 검증·미디어 확인·내용 노출 규칙을 확인한다. */
 class TimeCapsuleServiceTest {
 
     private static final Long USER_ID = 1L;
@@ -40,10 +43,13 @@ class TimeCapsuleServiceTest {
     private final TimeCapsuleMediaRepository timeCapsuleMediaRepository = mock(TimeCapsuleMediaRepository.class);
     private final MediaRepository mediaRepository = mock(MediaRepository.class);
     private final UserRepository userRepository = mock(UserRepository.class);
+    private final TimeCapsuleAccessGuard accessGuard = mock(TimeCapsuleAccessGuard.class);
     private final TimeCapsuleMapper timeCapsuleMapper = new TimeCapsuleMapper();
+    private final MediaMapper mediaMapper = mock(MediaMapper.class);
 
     private final TimeCapsuleService timeCapsuleService = new TimeCapsuleService(
-            timeCapsuleRepository, timeCapsuleMediaRepository, mediaRepository, userRepository, timeCapsuleMapper);
+            timeCapsuleRepository, timeCapsuleMediaRepository, mediaRepository, userRepository,
+            accessGuard, timeCapsuleMapper, mediaMapper);
 
     private User author;
 
@@ -195,5 +201,70 @@ class TimeCapsuleServiceTest {
         assertThat(captor.getValue()).hasSize(2);
         assertThat(captor.getValue().get(0).getSortOrder()).isEqualTo((short) 1);
         assertThat(captor.getValue().get(1).getSortOrder()).isEqualTo((short) 2);
+    }
+
+    // ── 조회(TC-03·06) ───────────────────────────────────────
+
+    private TimeCapsule capsule(Long id) {
+        TimeCapsule capsule = TimeCapsule.sealUntilDate(author, "제목", "내용", LocalDate.now().plusDays(10));
+        ReflectionTestUtils.setField(capsule, "id", id);
+        return capsule;
+    }
+
+    @Test
+    @DisplayName("없는 캡슐을 조회하면 TIME_CAPSULE_NOT_FOUND")
+    void 조회_없는캡슐() {
+        given(timeCapsuleRepository.findById(99L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> timeCapsuleService.get(USER_ID, 99L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.TIME_CAPSULE_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("남의 캡슐을 조회하면 403 — 접근가드에 위임한다")
+    void 조회_남의캡슐() {
+        TimeCapsule capsule = capsule(5L);
+        given(timeCapsuleRepository.findById(5L)).willReturn(Optional.of(capsule));
+        org.mockito.Mockito.doThrow(new BusinessException(ErrorCode.NOT_RESOURCE_OWNER))
+                .when(accessGuard).checkOwner(capsule, USER_ID);
+
+        assertThatThrownBy(() -> timeCapsuleService.get(USER_ID, 5L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.NOT_RESOURCE_OWNER);
+    }
+
+    @Test
+    @DisplayName("봉인 상태면 content·media·thumbnailUrl이 전부 비어 있다 — 내용이 새면 안 된다")
+    void 조회_봉인상태() {
+        TimeCapsule capsule = capsule(5L);
+        given(timeCapsuleRepository.findById(5L)).willReturn(Optional.of(capsule));
+
+        TimeCapsuleDetail result = timeCapsuleService.get(USER_ID, 5L);
+
+        assertThat(result.content()).isNull();
+        assertThat(result.media()).isEmpty();
+        assertThat(result.thumbnailUrl()).isNull();
+        org.mockito.Mockito.verifyNoInteractions(mediaMapper);
+    }
+
+    @Test
+    @DisplayName("열어본 캡슐은 content·media·thumbnailUrl이 채워진다")
+    void 조회_열어본캡슐() {
+        TimeCapsule capsule = capsule(5L);
+        capsule.open(java.time.LocalDateTime.now());
+        Media media = readyMedia(10L, USER_ID);
+        TimeCapsuleMedia item = new TimeCapsuleMedia(capsule, media, (short) 1);
+        given(timeCapsuleRepository.findById(5L)).willReturn(Optional.of(capsule));
+        given(timeCapsuleMediaRepository.findByCapsuleOrderBySortOrderAsc(capsule)).willReturn(List.of(item));
+        given(mediaMapper.toResponse(media)).willReturn(new MediaResponse(
+                10L, MediaStatus.READY, MediaType.IMAGE, "http://example.com/1.jpg", null,
+                100, 100, null, 1L, null, null, null, null));
+
+        TimeCapsuleDetail result = timeCapsuleService.get(USER_ID, 5L);
+
+        assertThat(result.content()).isEqualTo("내용");
+        assertThat(result.media()).hasSize(1);
+        assertThat(result.thumbnailUrl()).isEqualTo("http://example.com/1.jpg");
     }
 }
