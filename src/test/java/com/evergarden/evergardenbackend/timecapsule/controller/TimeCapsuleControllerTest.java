@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -109,5 +110,38 @@ class TimeCapsuleControllerTest {
                                 {"title":"제목","content":"내용","unlockType":"DATE","unlockDate":"2027-01-01"}
                                 """))
                 .andExpect(status().isUnauthorized());
+    }
+
+    // ── 조회(TC-03·06) ───────────────────────────────────────
+
+    @Test
+    @DisplayName("없는 캡슐을 조회하면 서비스의 404가 그대로 전달된다")
+    void 조회_없는캡슐() throws Exception {
+        given(timeCapsuleService.get(eq(1L), eq(99L)))
+                .willThrow(new BusinessException(ErrorCode.TIME_CAPSULE_NOT_FOUND));
+
+        mvc.perform(get("/time-capsules/99").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("TIME_CAPSULE_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("남의 캡슐을 조회하면 서비스의 403이 그대로 전달된다")
+    void 조회_남의캡슐() throws Exception {
+        given(timeCapsuleService.get(eq(1L), eq(5L)))
+                .willThrow(new BusinessException(ErrorCode.NOT_RESOURCE_OWNER));
+
+        mvc.perform(get("/time-capsules/5").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("NOT_RESOURCE_OWNER"));
+    }
+
+    @Test
+    @DisplayName("정상 조회는 로그인한 사용자 ID로 서비스에 위임한다")
+    void 정상_조회() throws Exception {
+        given(timeCapsuleService.get(eq(1L), eq(5L))).willReturn(mock(TimeCapsuleDetail.class));
+
+        mvc.perform(get("/time-capsules/5").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk());
     }
 }
