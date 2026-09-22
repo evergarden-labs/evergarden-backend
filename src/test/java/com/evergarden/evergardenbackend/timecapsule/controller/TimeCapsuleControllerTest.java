@@ -150,6 +150,36 @@ class TimeCapsuleControllerTest {
                 .andExpect(status().isBadRequest());
     }
 
+    // ── 위치 해제 판정(TC-04) ─────────────────────────────────
+
+    @Test
+    @DisplayName("좌표가 없으면 INVALID_REQUEST — 서비스를 부르지 않는다")
+    void 위치판정_좌표없음() throws Exception {
+        mvc.perform(post("/time-capsules/unlock-check")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"lat":37.5665}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    @DisplayName("정상 요청은 로그인한 사용자 ID로 서비스에 위임한다")
+    void 위치판정_정상() throws Exception {
+        given(timeCapsuleService.checkLocationUnlock(eq(1L), any())).willReturn(List.of());
+
+        mvc.perform(post("/time-capsules/unlock-check")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"lat":37.5665,"lng":126.9780}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isArray());
+    }
+
     // ── 조회(TC-03·06) ───────────────────────────────────────
 
     @Test

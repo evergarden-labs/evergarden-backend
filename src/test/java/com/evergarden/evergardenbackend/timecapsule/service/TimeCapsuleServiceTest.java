@@ -3,6 +3,7 @@ package com.evergarden.evergardenbackend.timecapsule.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -18,6 +19,10 @@ import com.evergarden.evergardenbackend.media.entity.MediaStatus;
 import com.evergarden.evergardenbackend.media.entity.MediaType;
 import com.evergarden.evergardenbackend.media.repository.MediaRepository;
 import com.evergarden.evergardenbackend.media.service.MediaMapper;
+import com.evergarden.evergardenbackend.notification.entity.NotificationTargetType;
+import com.evergarden.evergardenbackend.notification.entity.NotificationType;
+import com.evergarden.evergardenbackend.notification.service.NotificationService;
+import com.evergarden.evergardenbackend.timecapsule.dto.LocationUnlockCheckRequest;
 import com.evergarden.evergardenbackend.timecapsule.dto.TimeCapsuleCreateRequest;
 import com.evergarden.evergardenbackend.timecapsule.dto.TimeCapsuleDetail;
 import com.evergarden.evergardenbackend.timecapsule.dto.TimeCapsuleSummary;
@@ -51,10 +56,11 @@ class TimeCapsuleServiceTest {
     private final TimeCapsuleAccessGuard accessGuard = mock(TimeCapsuleAccessGuard.class);
     private final TimeCapsuleMapper timeCapsuleMapper = new TimeCapsuleMapper();
     private final MediaMapper mediaMapper = mock(MediaMapper.class);
+    private final NotificationService notificationService = mock(NotificationService.class);
 
     private final TimeCapsuleService timeCapsuleService = new TimeCapsuleService(
             timeCapsuleRepository, timeCapsuleMediaRepository, mediaRepository, userRepository,
-            accessGuard, timeCapsuleMapper, mediaMapper);
+            accessGuard, timeCapsuleMapper, mediaMapper, notificationService);
 
     private User author;
 
@@ -383,6 +389,64 @@ class TimeCapsuleServiceTest {
         assertThatThrownBy(() -> timeCapsuleService.listOpened(USER_ID, "not-a-valid-cursor!!", 20))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_REQUEST);
+    }
+
+    // ── 위치 해제 판정(TC-04) ─────────────────────────────────
+
+    private TimeCapsule locationCapsule(Long id, double lat, double lng, int radiusMeters) {
+        TimeCapsule capsule = TimeCapsule.sealAtPlace(author, "한라산 기억", "그날의 기억",
+                java.math.BigDecimal.valueOf(lat), java.math.BigDecimal.valueOf(lng), radiusMeters, "한라산");
+        ReflectionTestUtils.setField(capsule, "id", id);
+        return capsule;
+    }
+
+    @Test
+    @DisplayName("반경 안에 들어오면 UNLOCKABLE로 바뀌고, 알림을 보내고, 결과에 담긴다")
+    void 위치판정_반경안() {
+        TimeCapsule capsule = locationCapsule(1L, 33.3617, 126.5292, 500);
+        given(timeCapsuleRepository.findByOwner_IdAndUnlockTypeAndStatus(
+                USER_ID, UnlockType.LOCATION, com.evergarden.evergardenbackend.timecapsule.entity.TimeCapsuleStatus.SEALED))
+                .willReturn(List.of(capsule));
+
+        List<TimeCapsuleSummary> result = timeCapsuleService.checkLocationUnlock(
+                USER_ID, new LocationUnlockCheckRequest(33.3617, 126.5292));
+
+        assertThat(result).hasSize(1);
+        assertThat(capsule.isUnlockable()).isTrue();
+        verify(notificationService).notify(eq(author), eq(NotificationType.CAPSULE_UNLOCK), any(), any(),
+                eq(NotificationTargetType.TIME_CAPSULE), eq(1L));
+    }
+
+    @Test
+    @DisplayName("반경 밖이면 상태가 안 바뀌고, 알림도 안 가고, 결과도 비어 있다")
+    void 위치판정_반경밖() {
+        TimeCapsule capsule = locationCapsule(1L, 33.3617, 126.5292, 100);
+        given(timeCapsuleRepository.findByOwner_IdAndUnlockTypeAndStatus(
+                USER_ID, UnlockType.LOCATION, com.evergarden.evergardenbackend.timecapsule.entity.TimeCapsuleStatus.SEALED))
+                .willReturn(List.of(capsule));
+
+        List<TimeCapsuleSummary> result = timeCapsuleService.checkLocationUnlock(
+                USER_ID, new LocationUnlockCheckRequest(37.5665, 126.9780));
+
+        assertThat(result).isEmpty();
+        assertThat(capsule.isUnlockable()).isFalse();
+        org.mockito.Mockito.verifyNoInteractions(notificationService);
+    }
+
+    @Test
+    @DisplayName("여러 캡슐 중 조건을 만족한 것만 결과에 담긴다")
+    void 위치판정_일부만만족() {
+        TimeCapsule near = locationCapsule(1L, 33.3617, 126.5292, 500);
+        TimeCapsule far = locationCapsule(2L, 37.5665, 126.9780, 100);
+        given(timeCapsuleRepository.findByOwner_IdAndUnlockTypeAndStatus(
+                USER_ID, UnlockType.LOCATION, com.evergarden.evergardenbackend.timecapsule.entity.TimeCapsuleStatus.SEALED))
+                .willReturn(List.of(near, far));
+
+        List<TimeCapsuleSummary> result = timeCapsuleService.checkLocationUnlock(
+                USER_ID, new LocationUnlockCheckRequest(33.3617, 126.5292));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).capsuleId()).isEqualTo(1L);
     }
 
     // ── 삭제(TC-07) ──────────────────────────────────────────
