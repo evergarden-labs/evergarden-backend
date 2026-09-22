@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -143,5 +144,26 @@ class TimeCapsuleControllerTest {
 
         mvc.perform(get("/time-capsules/5").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk());
+    }
+
+    // ── 삭제(TC-07) ──────────────────────────────────────────
+
+    @Test
+    @DisplayName("없는 캡슐을 삭제하면 서비스의 404가 그대로 전달된다")
+    void 삭제_없는캡슐() throws Exception {
+        org.mockito.Mockito.doThrow(new BusinessException(ErrorCode.TIME_CAPSULE_NOT_FOUND))
+                .when(timeCapsuleService).delete(1L, 99L);
+
+        mvc.perform(delete("/time-capsules/99").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("TIME_CAPSULE_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("삭제는 빈 성공 봉투를 돌려준다")
+    void 삭제_성공() throws Exception {
+        mvc.perform(delete("/time-capsules/5").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").doesNotExist());
     }
 }

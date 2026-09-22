@@ -267,4 +267,40 @@ class TimeCapsuleServiceTest {
         assertThat(result.media()).hasSize(1);
         assertThat(result.thumbnailUrl()).isEqualTo("http://example.com/1.jpg");
     }
+
+    // ── 삭제(TC-07) ──────────────────────────────────────────
+
+    @Test
+    @DisplayName("없는 캡슐을 삭제하면 TIME_CAPSULE_NOT_FOUND")
+    void 삭제_없는캡슐() {
+        given(timeCapsuleRepository.findById(99L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> timeCapsuleService.delete(USER_ID, 99L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.TIME_CAPSULE_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("남의 캡슐을 삭제하면 403 — 접근가드에 위임한다")
+    void 삭제_남의캡슐() {
+        TimeCapsule capsule = capsule(5L);
+        given(timeCapsuleRepository.findById(5L)).willReturn(Optional.of(capsule));
+        org.mockito.Mockito.doThrow(new BusinessException(ErrorCode.NOT_RESOURCE_OWNER))
+                .when(accessGuard).checkOwner(capsule, USER_ID);
+
+        assertThatThrownBy(() -> timeCapsuleService.delete(USER_ID, 5L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.NOT_RESOURCE_OWNER);
+    }
+
+    @Test
+    @DisplayName("봉인 상태에서도 삭제할 수 있고, 행을 실제로 지운다")
+    void 삭제_정상() {
+        TimeCapsule capsule = capsule(5L);
+        given(timeCapsuleRepository.findById(5L)).willReturn(Optional.of(capsule));
+
+        timeCapsuleService.delete(USER_ID, 5L);
+
+        verify(timeCapsuleRepository).delete(capsule);
+    }
 }
