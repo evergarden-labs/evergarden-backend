@@ -514,6 +514,40 @@ class TimeCapsuleServiceTest {
         assertThat(result.get(0).capsuleId()).isEqualTo(1L);
     }
 
+    // ── 날짜 해제 배치(TC-04 날짜 쪽) ──────────────────────────
+
+    @Test
+    @DisplayName("unlockDate가 오늘이거나 지난 SEALED 캡슐만 UNLOCKABLE로 바뀌고, 각각 알림이 간다")
+    void 날짜배치_정상() {
+        TimeCapsule due1 = capsule(1L);
+        TimeCapsule due2 = capsule(2L);
+        given(timeCapsuleRepository.findByUnlockTypeAndStatusAndUnlockDateLessThanEqual(
+                UnlockType.DATE, com.evergarden.evergardenbackend.timecapsule.entity.TimeCapsuleStatus.SEALED,
+                LocalDate.of(2026, 1, 1)))
+                .willReturn(List.of(due1, due2));
+
+        int count = timeCapsuleService.unlockDueDateCapsules(LocalDate.of(2026, 1, 1));
+
+        assertThat(count).isEqualTo(2);
+        assertThat(due1.isUnlockable()).isTrue();
+        assertThat(due2.isUnlockable()).isTrue();
+        verify(notificationService, org.mockito.Mockito.times(2))
+                .notify(any(), eq(NotificationType.CAPSULE_UNLOCK), any(), any(),
+                        eq(NotificationTargetType.TIME_CAPSULE), any());
+    }
+
+    @Test
+    @DisplayName("대상이 없으면 0을 돌려주고 알림도 안 간다")
+    void 날짜배치_대상없음() {
+        given(timeCapsuleRepository.findByUnlockTypeAndStatusAndUnlockDateLessThanEqual(
+                any(), any(), any())).willReturn(List.of());
+
+        int count = timeCapsuleService.unlockDueDateCapsules(LocalDate.of(2026, 1, 1));
+
+        assertThat(count).isZero();
+        org.mockito.Mockito.verifyNoInteractions(notificationService);
+    }
+
     // ── 삭제(TC-07) ──────────────────────────────────────────
 
     @Test
