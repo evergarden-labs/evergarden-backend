@@ -3,6 +3,7 @@ package com.evergarden.evergardenbackend.timecapsule.controller;
 import com.evergarden.evergardenbackend.global.response.ApiResponse;
 import com.evergarden.evergardenbackend.global.response.CursorPage;
 import com.evergarden.evergardenbackend.global.security.AuthPrincipal;
+import com.evergarden.evergardenbackend.timecapsule.dto.LocationUnlockCheckRequest;
 import com.evergarden.evergardenbackend.timecapsule.dto.TimeCapsuleCreateRequest;
 import com.evergarden.evergardenbackend.timecapsule.dto.TimeCapsuleDetail;
 import com.evergarden.evergardenbackend.timecapsule.dto.TimeCapsuleSummary;
@@ -48,6 +49,13 @@ public class TimeCapsuleController {
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
         CursorPage<TimeCapsuleSummary> page = timeCapsuleService.listOpened(me.userId(), cursor, size);
         return ApiResponse.of(page.items(), page.meta());
+    }
+
+    @PostMapping("/unlock-check")
+    public ApiResponse<List<TimeCapsuleSummary>> checkLocationUnlock(
+            @AuthenticationPrincipal AuthPrincipal me,
+            @Valid @RequestBody LocationUnlockCheckRequest request) {
+        return ApiResponse.of(timeCapsuleService.checkLocationUnlock(me.userId(), request));
     }
 
     @PostMapping
