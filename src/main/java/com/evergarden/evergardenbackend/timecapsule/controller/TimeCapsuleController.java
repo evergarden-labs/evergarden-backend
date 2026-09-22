@@ -72,6 +72,13 @@ public class TimeCapsuleController {
         return ApiResponse.of(timeCapsuleService.get(me.userId(), capsuleId));
     }
 
+    @PostMapping("/{capsuleId}/open")
+    public ApiResponse<TimeCapsuleDetail> open(
+            @AuthenticationPrincipal AuthPrincipal me,
+            @PathVariable Long capsuleId) {
+        return ApiResponse.of(timeCapsuleService.open(me.userId(), capsuleId));
+    }
+
     @DeleteMapping("/{capsuleId}")
     public ApiResponse<Void> delete(
             @AuthenticationPrincipal AuthPrincipal me,
