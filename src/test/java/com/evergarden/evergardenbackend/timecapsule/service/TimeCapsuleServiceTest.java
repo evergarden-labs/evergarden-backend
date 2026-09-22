@@ -10,6 +10,8 @@ import static org.mockito.Mockito.verify;
 
 import com.evergarden.evergardenbackend.global.exception.BusinessException;
 import com.evergarden.evergardenbackend.global.exception.ErrorCode;
+import com.evergarden.evergardenbackend.global.response.CursorPage;
+import com.evergarden.evergardenbackend.global.util.CursorCodec;
 import com.evergarden.evergardenbackend.media.dto.MediaResponse;
 import com.evergarden.evergardenbackend.media.entity.Media;
 import com.evergarden.evergardenbackend.media.entity.MediaStatus;
@@ -18,6 +20,7 @@ import com.evergarden.evergardenbackend.media.repository.MediaRepository;
 import com.evergarden.evergardenbackend.media.service.MediaMapper;
 import com.evergarden.evergardenbackend.timecapsule.dto.TimeCapsuleCreateRequest;
 import com.evergarden.evergardenbackend.timecapsule.dto.TimeCapsuleDetail;
+import com.evergarden.evergardenbackend.timecapsule.dto.TimeCapsuleSummary;
 import com.evergarden.evergardenbackend.timecapsule.entity.TimeCapsule;
 import com.evergarden.evergardenbackend.timecapsule.entity.TimeCapsuleMedia;
 import com.evergarden.evergardenbackend.timecapsule.entity.UnlockType;
@@ -26,12 +29,14 @@ import com.evergarden.evergardenbackend.timecapsule.repository.TimeCapsuleReposi
 import com.evergarden.evergardenbackend.user.entity.User;
 import com.evergarden.evergardenbackend.user.repository.UserRepository;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /** 타임캡슐 생성·조회(TC-01·03·06)의 해제 조건 검증·미디어 확인·내용 노출 규칙을 확인한다. */
@@ -266,6 +271,118 @@ class TimeCapsuleServiceTest {
         assertThat(result.content()).isEqualTo("내용");
         assertThat(result.media()).hasSize(1);
         assertThat(result.thumbnailUrl()).isEqualTo("http://example.com/1.jpg");
+    }
+
+    // ── 목록(TC-02) ──────────────────────────────────────────
+
+    @Test
+    @DisplayName("목록이 비어 있으면 hasNext=false, nextCursor=null")
+    void 목록_없음() {
+        given(timeCapsuleRepository.findAllByOwner(org.mockito.ArgumentMatchers.eq(USER_ID),
+                org.mockito.ArgumentMatchers.isNull(), any())).willReturn(List.of());
+
+        CursorPage<TimeCapsuleSummary> page = timeCapsuleService.list(USER_ID, null, 20);
+
+        assertThat(page.items()).isEmpty();
+        assertThat(page.meta().hasNext()).isFalse();
+        assertThat(page.meta().nextCursor()).isNull();
+    }
+
+    @Test
+    @DisplayName("size+1개가 돌아오면 hasNext=true이고, 마지막 항목의 id로 다음 커서를 만든다")
+    void 목록_다음페이지있음() {
+        List<TimeCapsule> twoOfThree = List.of(capsule(3L), capsule(2L), capsule(1L));
+        given(timeCapsuleRepository.findAllByOwner(org.mockito.ArgumentMatchers.eq(USER_ID),
+                org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.eq(PageRequest.of(0, 3))))
+                .willReturn(twoOfThree);
+
+        CursorPage<TimeCapsuleSummary> page = timeCapsuleService.list(USER_ID, null, 2);
+
+        assertThat(page.items()).hasSize(2);
+        assertThat(page.meta().hasNext()).isTrue();
+        assertThat(page.meta().nextCursor()).isEqualTo(CursorCodec.encode(2L));
+    }
+
+    @Test
+    @DisplayName("봉인 상태 항목은 목록에서도 thumbnailUrl이 null이다 — 미디어를 조회하지 않는다")
+    void 목록_봉인상태_썸네일없음() {
+        TimeCapsule sealed = capsule(1L);
+        given(timeCapsuleRepository.findAllByOwner(org.mockito.ArgumentMatchers.eq(USER_ID),
+                org.mockito.ArgumentMatchers.isNull(), any())).willReturn(List.of(sealed));
+
+        CursorPage<TimeCapsuleSummary> page = timeCapsuleService.list(USER_ID, null, 20);
+
+        assertThat(page.items().get(0).thumbnailUrl()).isNull();
+        org.mockito.Mockito.verifyNoInteractions(timeCapsuleMediaRepository);
+    }
+
+    @Test
+    @DisplayName("열어본 항목은 목록에서 첫 미디어로 thumbnailUrl을 채운다")
+    void 목록_열어본항목_썸네일채움() {
+        TimeCapsule opened = capsule(1L);
+        opened.open(LocalDateTime.now());
+        Media media = readyMedia(10L, USER_ID);
+        TimeCapsuleMedia item = new TimeCapsuleMedia(opened, media, (short) 1);
+        given(timeCapsuleRepository.findAllByOwner(org.mockito.ArgumentMatchers.eq(USER_ID),
+                org.mockito.ArgumentMatchers.isNull(), any())).willReturn(List.of(opened));
+        given(timeCapsuleMediaRepository.findByCapsuleOrderBySortOrderAsc(opened)).willReturn(List.of(item));
+        given(mediaMapper.toResponse(media)).willReturn(new MediaResponse(
+                10L, MediaStatus.READY, MediaType.IMAGE, "http://example.com/1.jpg", null,
+                100, 100, null, 1L, null, null, null, null));
+
+        CursorPage<TimeCapsuleSummary> page = timeCapsuleService.list(USER_ID, null, 20);
+
+        assertThat(page.items().get(0).thumbnailUrl()).isEqualTo("http://example.com/1.jpg");
+    }
+
+    // ── 열어본 목록(TC-06) ────────────────────────────────────
+
+    @Test
+    @DisplayName("열어본 목록이 비어 있으면 hasNext=false, nextCursor=null")
+    void 열어본목록_없음() {
+        given(timeCapsuleRepository.findOpenedByOwner(org.mockito.ArgumentMatchers.eq(USER_ID),
+                org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull(), any()))
+                .willReturn(List.of());
+
+        CursorPage<TimeCapsuleSummary> page = timeCapsuleService.listOpened(USER_ID, null, 20);
+
+        assertThat(page.items()).isEmpty();
+        assertThat(page.meta().hasNext()).isFalse();
+    }
+
+    @Test
+    @DisplayName("열어본 목록의 커서는 왕복한다 — (openedAt, id) 둘 다 다음 요청에 그대로 실려간다")
+    void 열어본목록_커서왕복() {
+        TimeCapsule opened1 = capsule(2L);
+        opened1.open(LocalDateTime.of(2026, 1, 2, 10, 0));
+        TimeCapsule opened2 = capsule(1L);
+        opened2.open(LocalDateTime.of(2026, 1, 1, 10, 0));
+        given(timeCapsuleRepository.findOpenedByOwner(org.mockito.ArgumentMatchers.eq(USER_ID),
+                org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.eq(PageRequest.of(0, 2))))
+                .willReturn(List.of(opened1, opened2));
+
+        CursorPage<TimeCapsuleSummary> firstPage = timeCapsuleService.listOpened(USER_ID, null, 1);
+        assertThat(firstPage.meta().hasNext()).isTrue();
+        String nextCursor = firstPage.meta().nextCursor();
+
+        ArgumentCaptor<LocalDateTime> openedAtCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
+        ArgumentCaptor<Long> idCaptor = ArgumentCaptor.forClass(Long.class);
+        given(timeCapsuleRepository.findOpenedByOwner(org.mockito.ArgumentMatchers.eq(USER_ID),
+                openedAtCaptor.capture(), idCaptor.capture(), any())).willReturn(List.of(opened2));
+
+        timeCapsuleService.listOpened(USER_ID, nextCursor, 1);
+
+        assertThat(openedAtCaptor.getValue()).isEqualTo(LocalDateTime.of(2026, 1, 2, 10, 0));
+        assertThat(idCaptor.getValue()).isEqualTo(2L);
+    }
+
+    @Test
+    @DisplayName("깨진 커서 문자열이면 INVALID_REQUEST")
+    void 열어본목록_잘못된커서() {
+        assertThatThrownBy(() -> timeCapsuleService.listOpened(USER_ID, "not-a-valid-cursor!!", 20))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_REQUEST);
     }
 
     // ── 삭제(TC-07) ──────────────────────────────────────────

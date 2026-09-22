@@ -20,10 +20,14 @@ import com.evergarden.evergardenbackend.global.security.JwtAuthenticationFilter;
 import com.evergarden.evergardenbackend.global.security.JwtTokenProvider;
 import com.evergarden.evergardenbackend.global.security.Role;
 import com.evergarden.evergardenbackend.global.security.SecurityErrorResponder;
+import com.evergarden.evergardenbackend.global.response.CursorMeta;
+import com.evergarden.evergardenbackend.global.response.CursorPage;
 import com.evergarden.evergardenbackend.timecapsule.dto.TimeCapsuleDetail;
+import com.evergarden.evergardenbackend.timecapsule.dto.TimeCapsuleSummary;
 import com.evergarden.evergardenbackend.timecapsule.service.TimeCapsuleService;
 import com.evergarden.evergardenbackend.user.entity.User;
 import com.evergarden.evergardenbackend.user.repository.UserRepository;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -111,6 +115,39 @@ class TimeCapsuleControllerTest {
                                 {"title":"제목","content":"내용","unlockType":"DATE","unlockDate":"2027-01-01"}
                                 """))
                 .andExpect(status().isUnauthorized());
+    }
+
+    // ── 목록(TC-02·06) ───────────────────────────────────────
+
+    @Test
+    @DisplayName("목록은 로그인한 사용자 ID로 서비스에 위임하고, 커서 메타를 함께 돌려준다")
+    void 목록_정상() throws Exception {
+        given(timeCapsuleService.list(eq(1L), eq((String) null), eq(20)))
+                .willReturn(new CursorPage<>(List.of(mock(TimeCapsuleSummary.class)), CursorMeta.last()));
+
+        mvc.perform(get("/time-capsules").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.meta.hasNext").value(false));
+    }
+
+    @Test
+    @DisplayName("열어본 목록도 로그인한 사용자 ID로 서비스에 위임한다")
+    void 열어본목록_정상() throws Exception {
+        given(timeCapsuleService.listOpened(eq(1L), eq((String) null), eq(20)))
+                .willReturn(new CursorPage<>(List.of(), CursorMeta.last()));
+
+        mvc.perform(get("/time-capsules/opened").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isArray());
+    }
+
+    @Test
+    @DisplayName("size가 범위를 벗어나면 INVALID_REQUEST — 서비스를 부르지 않는다")
+    void 목록_size범위초과() throws Exception {
+        mvc.perform(get("/time-capsules").header("Authorization", "Bearer " + accessToken)
+                        .param("size", "51"))
+                .andExpect(status().isBadRequest());
     }
 
     // ── 조회(TC-03·06) ───────────────────────────────────────
