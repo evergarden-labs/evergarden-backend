@@ -9,13 +9,20 @@ import com.evergarden.evergardenbackend.media.dto.MediaResponse;
 import com.evergarden.evergardenbackend.media.entity.Media;
 import com.evergarden.evergardenbackend.media.repository.MediaRepository;
 import com.evergarden.evergardenbackend.media.service.MediaMapper;
+import com.evergarden.evergardenbackend.notification.entity.NotificationTargetType;
+import com.evergarden.evergardenbackend.notification.entity.NotificationType;
+import com.evergarden.evergardenbackend.notification.service.NotificationService;
+import com.evergarden.evergardenbackend.timecapsule.dto.LocationUnlockCheckRequest;
 import com.evergarden.evergardenbackend.timecapsule.dto.TimeCapsuleCreateRequest;
 import com.evergarden.evergardenbackend.timecapsule.dto.TimeCapsuleDetail;
 import com.evergarden.evergardenbackend.timecapsule.dto.TimeCapsuleSummary;
 import com.evergarden.evergardenbackend.timecapsule.entity.TimeCapsule;
 import com.evergarden.evergardenbackend.timecapsule.entity.TimeCapsuleMedia;
+import com.evergarden.evergardenbackend.timecapsule.entity.TimeCapsuleStatus;
+import com.evergarden.evergardenbackend.timecapsule.entity.UnlockType;
 import com.evergarden.evergardenbackend.timecapsule.repository.TimeCapsuleMediaRepository;
 import com.evergarden.evergardenbackend.timecapsule.repository.TimeCapsuleRepository;
+import com.evergarden.evergardenbackend.trip.service.GeoDistance;
 import com.evergarden.evergardenbackend.user.entity.User;
 import com.evergarden.evergardenbackend.user.repository.UserRepository;
 import java.math.BigDecimal;
@@ -45,6 +52,7 @@ public class TimeCapsuleService {
     private final TimeCapsuleAccessGuard accessGuard;
     private final TimeCapsuleMapper timeCapsuleMapper;
     private final MediaMapper mediaMapper;
+    private final NotificationService notificationService;
 
     /**
      * 글과 사진을 담아 봉인한다(TC-01). 만든 직후 상태는 항상 {@code SEALED}라
@@ -115,6 +123,36 @@ public class TimeCapsuleService {
 
     private TimeCapsuleSummary toSummary(TimeCapsule capsule) {
         return timeCapsuleMapper.toSummary(capsule, capsule.isOpened() ? firstThumbnailUrl(capsule) : null);
+    }
+
+    /**
+     * 위치 해제 판정(TC-04). 배터리 소모 없이 앱이 켜질 때 한 번 위치를 보고하는
+     * 방식이라(ADR-026) 서버가 능동적으로 찾아가지 않는다 — 이 사용자의 아직 안 열린
+     * 위치 조건 캡슐만 훑어서, 반경 안에 들어온 것만 {@code UNLOCKABLE}로 바꾸고 알린다.
+     * {@code markUnlockable()}이 관리 중인 엔티티를 바꾸므로 트랜잭션 커밋 시 더티 체킹으로
+     * 반영된다 — 따로 저장하지 않는다({@code TripService.update()}와 같은 방식).
+     */
+    public List<TimeCapsuleSummary> checkLocationUnlock(Long userId, LocationUnlockCheckRequest request) {
+        BigDecimal currentLat = BigDecimal.valueOf(request.lat());
+        BigDecimal currentLng = BigDecimal.valueOf(request.lng());
+
+        List<TimeCapsule> candidates = timeCapsuleRepository.findByOwner_IdAndUnlockTypeAndStatus(
+                userId, UnlockType.LOCATION, TimeCapsuleStatus.SEALED);
+
+        List<TimeCapsuleSummary> newlyUnlockable = new ArrayList<>();
+        for (TimeCapsule capsule : candidates) {
+            long distance = GeoDistance.metersBetween(
+                    capsule.getUnlockLat(), capsule.getUnlockLng(), currentLat, currentLng);
+            if (distance > capsule.getUnlockRadiusM()) {
+                continue;
+            }
+            capsule.markUnlockable();
+            notificationService.notify(capsule.getOwner(), NotificationType.CAPSULE_UNLOCK,
+                    "타임캡슐을 열어볼 수 있어요", "\"" + capsule.getTitle() + "\" 캡슐을 열어볼 수 있게 됐어요.",
+                    NotificationTargetType.TIME_CAPSULE, capsule.getId());
+            newlyUnlockable.add(toSummary(capsule));
+        }
+        return newlyUnlockable;
     }
 
     /**
