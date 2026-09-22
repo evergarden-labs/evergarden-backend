@@ -85,6 +85,19 @@ public class TimeCapsuleService {
         return timeCapsuleMapper.toDetail(capsule, thumbnailUrl, media);
     }
 
+    /**
+     * 타임캡슐을 지운다(TC-07). 상태 전환이 아니라 실제로 지운다(ADR-007의 예외) —
+     * 본인만 걸린 데이터라서다. 담긴 사진·영상(`media`)은 다른 곳에서도 쓸 수 있어
+     * 같이 안 지운다 — {@code time_capsule_media}만 DB의 {@code ON DELETE CASCADE}로
+     * 함께 지워지고(`V1__init.sql`의 `tcm_capsule_fk`), {@code media} 테이블은 그대로다.
+     * 봉인 상태에서도 지울 수 있다 — 상태를 안 가린다.
+     */
+    public void delete(Long userId, Long capsuleId) {
+        TimeCapsule capsule = findCapsule(capsuleId);
+        accessGuard.checkOwner(capsule, userId);
+        timeCapsuleRepository.delete(capsule);
+    }
+
     private TimeCapsule findCapsule(Long capsuleId) {
         return timeCapsuleRepository.findById(capsuleId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.TIME_CAPSULE_NOT_FOUND));
