@@ -2,8 +2,10 @@ package com.evergarden.evergardenbackend.timecapsule.service;
 
 import com.evergarden.evergardenbackend.global.exception.BusinessException;
 import com.evergarden.evergardenbackend.global.exception.ErrorCode;
+import com.evergarden.evergardenbackend.media.dto.MediaResponse;
 import com.evergarden.evergardenbackend.media.entity.Media;
 import com.evergarden.evergardenbackend.media.repository.MediaRepository;
+import com.evergarden.evergardenbackend.media.service.MediaMapper;
 import com.evergarden.evergardenbackend.timecapsule.dto.TimeCapsuleCreateRequest;
 import com.evergarden.evergardenbackend.timecapsule.dto.TimeCapsuleDetail;
 import com.evergarden.evergardenbackend.timecapsule.entity.TimeCapsule;
@@ -32,7 +34,9 @@ public class TimeCapsuleService {
     private final TimeCapsuleMediaRepository timeCapsuleMediaRepository;
     private final MediaRepository mediaRepository;
     private final UserRepository userRepository;
+    private final TimeCapsuleAccessGuard accessGuard;
     private final TimeCapsuleMapper timeCapsuleMapper;
+    private final MediaMapper mediaMapper;
 
     /**
      * 글과 사진을 담아 봉인한다(TC-01). 만든 직후 상태는 항상 {@code SEALED}라
@@ -52,6 +56,38 @@ public class TimeCapsuleService {
         timeCapsuleMediaRepository.saveAll(items);
 
         return timeCapsuleMapper.toDetail(capsule, null, List.of());
+    }
+
+    /**
+     * 해제 조건 확인·내용 다시 보기(TC-03·06). 소유자만 볼 수 있다 — 게시물과 달리
+     * 타임캡슐은 남에게 공개되는 자원이 아니다.
+     */
+    @Transactional(readOnly = true)
+    public TimeCapsuleDetail get(Long userId, Long capsuleId) {
+        TimeCapsule capsule = findCapsule(capsuleId);
+        accessGuard.checkOwner(capsule, userId);
+        return toDetail(capsule);
+    }
+
+    /**
+     * {@code OPENED}일 때만 실제로 사진·영상을 조회한다 — 봉인 상태에서 미리 불러올
+     * 이유가 없다. {@code thumbnailUrl}도 같은 기준으로, 열어본 캡슐의 첫 번째 사진에서
+     * 뽑는다({@code TripMapper.thumbnailUrl()}과 같은 "썸네일 없으면 원본" 우선순위).
+     */
+    private TimeCapsuleDetail toDetail(TimeCapsule capsule) {
+        if (!capsule.isOpened()) {
+            return timeCapsuleMapper.toDetail(capsule, null, List.of());
+        }
+        List<TimeCapsuleMedia> items = timeCapsuleMediaRepository.findByCapsuleOrderBySortOrderAsc(capsule);
+        List<MediaResponse> media = items.stream().map(item -> mediaMapper.toResponse(item.getMedia())).toList();
+        String thumbnailUrl = media.isEmpty() ? null
+                : media.get(0).thumbnailUrl() != null ? media.get(0).thumbnailUrl() : media.get(0).url();
+        return timeCapsuleMapper.toDetail(capsule, thumbnailUrl, media);
+    }
+
+    private TimeCapsule findCapsule(Long capsuleId) {
+        return timeCapsuleRepository.findById(capsuleId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.TIME_CAPSULE_NOT_FOUND));
     }
 
     private TimeCapsule buildCapsule(Long userId, TimeCapsuleCreateRequest request) {
