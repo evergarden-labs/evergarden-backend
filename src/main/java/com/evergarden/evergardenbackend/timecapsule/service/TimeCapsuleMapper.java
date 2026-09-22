@@ -13,21 +13,26 @@ import org.springframework.stereotype.Component;
 @Component
 public class TimeCapsuleMapper {
 
+    /**
+     * @param thumbnailUrl 미리 계산해서 넘긴다. {@code OPENED}가 아닐 때 호출자가 실수로
+     *                     값을 넘겨도 여기서 다시 한번 가린다 — {@code content}·{@code media}와
+     *                     같은 기준(상태가 새는 걸 막는 마지막 방어선)
+     */
     public TimeCapsuleSummary toSummary(TimeCapsule capsule, String thumbnailUrl) {
         return new TimeCapsuleSummary(
                 capsule.getId(), capsule.getTitle(), capsule.getStatus(), capsule.getUnlockType(),
-                thumbnailUrl, capsule.getCreatedAt(), capsule.getOpenedAt());
+                capsule.isOpened() ? thumbnailUrl : null, capsule.getCreatedAt(), capsule.getOpenedAt());
     }
 
     /**
-     * @param thumbnailUrl 미리 계산해서 넘긴다. {@code OPENED}가 아니면 항상 {@code null}이어야 한다
-     * @param media        미리 계산해서 넘긴다. {@code OPENED}가 아니면 항상 빈 목록이어야 한다
+     * @param thumbnailUrl 미리 계산해서 넘긴다. {@code OPENED}가 아니면 여기서 다시 한번 가린다
+     * @param media        미리 계산해서 넘긴다. {@code OPENED}가 아니면 여기서 다시 한번 가린다
      */
     public TimeCapsuleDetail toDetail(TimeCapsule capsule, String thumbnailUrl, List<MediaResponse> media) {
         boolean opened = capsule.isOpened();
         return new TimeCapsuleDetail(
                 capsule.getId(), capsule.getTitle(), capsule.getStatus(), capsule.getUnlockType(),
-                thumbnailUrl, capsule.getCreatedAt(), capsule.getOpenedAt(),
+                opened ? thumbnailUrl : null, capsule.getCreatedAt(), capsule.getOpenedAt(),
                 unlockCondition(capsule),
                 opened ? capsule.getContent() : null,
                 opened ? media : List.of());
