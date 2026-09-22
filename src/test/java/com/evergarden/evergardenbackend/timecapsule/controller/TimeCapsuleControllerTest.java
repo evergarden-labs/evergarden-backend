@@ -150,6 +150,39 @@ class TimeCapsuleControllerTest {
                 .andExpect(status().isBadRequest());
     }
 
+    // ── 열기(TC-05) ──────────────────────────────────────────
+
+    @Test
+    @DisplayName("아직 못 여는 캡슐이면 서비스의 409가 그대로 전달된다")
+    void 열기_봉인상태() throws Exception {
+        given(timeCapsuleService.open(eq(1L), eq(5L)))
+                .willThrow(new BusinessException(ErrorCode.CAPSULE_NOT_UNLOCKABLE));
+
+        mvc.perform(post("/time-capsules/5/open").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("CAPSULE_NOT_UNLOCKABLE"));
+    }
+
+    @Test
+    @DisplayName("이미 연 캡슐이면 서비스의 409가 그대로 전달된다")
+    void 열기_이미열림() throws Exception {
+        given(timeCapsuleService.open(eq(1L), eq(5L)))
+                .willThrow(new BusinessException(ErrorCode.CAPSULE_ALREADY_OPENED));
+
+        mvc.perform(post("/time-capsules/5/open").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("CAPSULE_ALREADY_OPENED"));
+    }
+
+    @Test
+    @DisplayName("정상 요청은 로그인한 사용자 ID로 서비스에 위임한다")
+    void 열기_정상() throws Exception {
+        given(timeCapsuleService.open(eq(1L), eq(5L))).willReturn(mock(TimeCapsuleDetail.class));
+
+        mvc.perform(post("/time-capsules/5/open").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk());
+    }
+
     // ── 위치 해제 판정(TC-04) ─────────────────────────────────
 
     @Test

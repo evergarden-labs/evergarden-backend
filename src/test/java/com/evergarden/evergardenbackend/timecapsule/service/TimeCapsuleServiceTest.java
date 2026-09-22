@@ -391,6 +391,71 @@ class TimeCapsuleServiceTest {
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_REQUEST);
     }
 
+    // ── 열기(TC-05) ──────────────────────────────────────────
+
+    @Test
+    @DisplayName("없는 캡슐을 열면 TIME_CAPSULE_NOT_FOUND")
+    void 열기_없는캡슐() {
+        given(timeCapsuleRepository.findById(99L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> timeCapsuleService.open(USER_ID, 99L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.TIME_CAPSULE_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("남의 캡슐을 열면 403 — 접근가드에 위임한다")
+    void 열기_남의캡슐() {
+        TimeCapsule capsule = capsule(5L);
+        given(timeCapsuleRepository.findById(5L)).willReturn(Optional.of(capsule));
+        org.mockito.Mockito.doThrow(new BusinessException(ErrorCode.NOT_RESOURCE_OWNER))
+                .when(accessGuard).checkOwner(capsule, USER_ID);
+
+        assertThatThrownBy(() -> timeCapsuleService.open(USER_ID, 5L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.NOT_RESOURCE_OWNER);
+    }
+
+    @Test
+    @DisplayName("아직 SEALED면 CAPSULE_NOT_UNLOCKABLE — 해제 조건 종류를 details에 담는다")
+    void 열기_봉인상태() {
+        TimeCapsule capsule = capsule(5L);
+        given(timeCapsuleRepository.findById(5L)).willReturn(Optional.of(capsule));
+
+        assertThatThrownBy(() -> timeCapsuleService.open(USER_ID, 5L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.CAPSULE_NOT_UNLOCKABLE)
+                .satisfies(e -> assertThat(((BusinessException) e).getDetails())
+                        .containsEntry("unlockType", UnlockType.DATE));
+    }
+
+    @Test
+    @DisplayName("이미 OPENED면 CAPSULE_ALREADY_OPENED — 대신 GET을 쓰라는 뜻이다")
+    void 열기_이미열림() {
+        TimeCapsule capsule = capsule(5L);
+        capsule.open(LocalDateTime.now());
+        given(timeCapsuleRepository.findById(5L)).willReturn(Optional.of(capsule));
+
+        assertThatThrownBy(() -> timeCapsuleService.open(USER_ID, 5L))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.CAPSULE_ALREADY_OPENED);
+    }
+
+    @Test
+    @DisplayName("UNLOCKABLE이면 정상적으로 열리고, openedAt이 기록되고, 내용이 채워진다")
+    void 열기_정상() {
+        TimeCapsule capsule = capsule(5L);
+        capsule.markUnlockable();
+        given(timeCapsuleRepository.findById(5L)).willReturn(Optional.of(capsule));
+
+        TimeCapsuleDetail result = timeCapsuleService.open(USER_ID, 5L);
+
+        assertThat(capsule.isOpened()).isTrue();
+        assertThat(result.status().name()).isEqualTo("OPENED");
+        assertThat(result.content()).isEqualTo("내용");
+        assertThat(result.openedAt()).isNotNull();
+    }
+
     // ── 위치 해제 판정(TC-04) ─────────────────────────────────
 
     private TimeCapsule locationCapsule(Long id, double lat, double lng, int radiusMeters) {
