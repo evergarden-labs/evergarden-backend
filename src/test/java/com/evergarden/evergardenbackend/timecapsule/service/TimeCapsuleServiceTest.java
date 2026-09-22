@@ -514,6 +514,50 @@ class TimeCapsuleServiceTest {
         assertThat(result.get(0).capsuleId()).isEqualTo(1L);
     }
 
+    @Test
+    @DisplayName("경계값 — 거리가 반경과 정확히 같으면 해제된다(<= 판정)")
+    void 위치판정_경계값_반경과_같으면_해제() {
+        double baseLat = 37.5665;
+        double baseLng = 126.9780;
+        double targetLat = 37.5700;
+        double targetLng = 126.9780;
+        long exactDistance = com.evergarden.evergardenbackend.trip.service.GeoDistance.metersBetween(
+                java.math.BigDecimal.valueOf(baseLat), java.math.BigDecimal.valueOf(baseLng),
+                java.math.BigDecimal.valueOf(targetLat), java.math.BigDecimal.valueOf(targetLng));
+        TimeCapsule capsule = locationCapsule(1L, baseLat, baseLng, (int) exactDistance);
+        given(timeCapsuleRepository.findByOwner_IdAndUnlockTypeAndStatus(
+                USER_ID, UnlockType.LOCATION, com.evergarden.evergardenbackend.timecapsule.entity.TimeCapsuleStatus.SEALED))
+                .willReturn(List.of(capsule));
+
+        List<TimeCapsuleSummary> result = timeCapsuleService.checkLocationUnlock(
+                USER_ID, new LocationUnlockCheckRequest(targetLat, targetLng));
+
+        assertThat(result).hasSize(1);
+        assertThat(capsule.isUnlockable()).isTrue();
+    }
+
+    @Test
+    @DisplayName("경계값 — 거리가 반경보다 1m만 더 멀어도 해제되지 않는다")
+    void 위치판정_경계값_반경보다_1m_멀면_실패() {
+        double baseLat = 37.5665;
+        double baseLng = 126.9780;
+        double targetLat = 37.5700;
+        double targetLng = 126.9780;
+        long exactDistance = com.evergarden.evergardenbackend.trip.service.GeoDistance.metersBetween(
+                java.math.BigDecimal.valueOf(baseLat), java.math.BigDecimal.valueOf(baseLng),
+                java.math.BigDecimal.valueOf(targetLat), java.math.BigDecimal.valueOf(targetLng));
+        TimeCapsule capsule = locationCapsule(1L, baseLat, baseLng, (int) exactDistance - 1);
+        given(timeCapsuleRepository.findByOwner_IdAndUnlockTypeAndStatus(
+                USER_ID, UnlockType.LOCATION, com.evergarden.evergardenbackend.timecapsule.entity.TimeCapsuleStatus.SEALED))
+                .willReturn(List.of(capsule));
+
+        List<TimeCapsuleSummary> result = timeCapsuleService.checkLocationUnlock(
+                USER_ID, new LocationUnlockCheckRequest(targetLat, targetLng));
+
+        assertThat(result).isEmpty();
+        assertThat(capsule.isUnlockable()).isFalse();
+    }
+
     // ── 날짜 해제 배치(TC-04 날짜 쪽) ──────────────────────────
 
     @Test
