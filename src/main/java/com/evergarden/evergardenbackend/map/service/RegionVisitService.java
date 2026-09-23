@@ -6,6 +6,7 @@ import com.evergarden.evergardenbackend.garden.entity.RewardStatus;
 import com.evergarden.evergardenbackend.garden.entity.UserGardenObject;
 import com.evergarden.evergardenbackend.garden.repository.GardenObjectRepository;
 import com.evergarden.evergardenbackend.garden.repository.UserGardenObjectRepository;
+import com.evergarden.evergardenbackend.garden.repository.UserGardenObjectSnapshot;
 import com.evergarden.evergardenbackend.global.exception.BusinessException;
 import com.evergarden.evergardenbackend.global.exception.ErrorCode;
 import com.evergarden.evergardenbackend.map.dto.RegionVisitRequest;
@@ -153,15 +154,21 @@ public class RegionVisitService {
             if (grown == 1) {
                 return new RewardOutcome(RewardStatus.GROWN, gardenObject, beforeStage, (short) (beforeStage + 1), null);
             }
-            // 같은 순간 다른 요청이 먼저 키웠다(version 불일치) — 최신 상태를 다시 읽어 COOLDOWN으로 처리한다.
-            userGardenObject = userGardenObjectRepository
-                    .findByUser_IdAndGardenObject_Id(user.getId(), gardenObject.getId())
+            // 같은 순간 다른 요청이 먼저 키웠다(version 불일치) — 진짜 최신 값을 프로젝션으로 읽는다.
+            // 엔티티로 다시 읽으면 이 트랜잭션에서 이미 로드한 적 있는 그 엔티티를 Hibernate
+            // 1차 캐시가 그대로 돌려줘서, 방금 tryGrow가 실패했다는 사실과 무관하게 여전히
+            // beforeStage를 보게 된다(실전에서 확인한 문제).
+            UserGardenObjectSnapshot snapshot = userGardenObjectRepository
+                    .findSnapshot(user.getId(), gardenObject.getId())
                     .orElseThrow(() -> new IllegalStateException(
                             "성장 경합 직후에도 UserGardenObject를 찾지 못함: gardenObjectId=" + gardenObject.getId()));
+            LocalDateTime nextAvailableAt = snapshot.getStage() >= gardenObject.getMaxStage()
+                    ? null : snapshot.getLastGrownAt().plusDays(COOLDOWN_DAYS);
+            return new RewardOutcome(RewardStatus.COOLDOWN, gardenObject, null, snapshot.getStage(), nextAvailableAt);
         }
-        LocalDateTime nextAvailableAt = userGardenObject.getStage() >= gardenObject.getMaxStage()
+        LocalDateTime nextAvailableAt = beforeStage >= gardenObject.getMaxStage()
                 ? null : userGardenObject.nextGrowableAt(COOLDOWN_DAYS);
-        return new RewardOutcome(RewardStatus.COOLDOWN, gardenObject, null, userGardenObject.getStage(), nextAvailableAt);
+        return new RewardOutcome(RewardStatus.COOLDOWN, gardenObject, null, beforeStage, nextAvailableAt);
     }
 
     private record RewardOutcome(RewardStatus status, GardenObject gardenObject,
