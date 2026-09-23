@@ -46,7 +46,7 @@ class GardenServiceTest {
     @Test
     @DisplayName("해금한 게 없으면 objects는 비고 unlockedCount는 0, totalCount는 도감 전체 개수다")
     void 해금없음() {
-        given(userGardenObjectRepository.findByUser_Id(USER_ID)).willReturn(List.of());
+        given(userGardenObjectRepository.findByUser_IdOrderByUnlockedAtAsc(USER_ID)).willReturn(List.of());
         given(gardenObjectRepository.count()).willReturn(5L);
 
         Garden result = service.getMyGarden(USER_ID);
@@ -59,7 +59,7 @@ class GardenServiceTest {
     @Test
     @DisplayName("해금한 것만 담기고, unlockedCount는 그 개수와 같다")
     void 해금된것만_담김() {
-        given(userGardenObjectRepository.findByUser_Id(USER_ID))
+        given(userGardenObjectRepository.findByUser_IdOrderByUnlockedAtAsc(USER_ID))
                 .willReturn(List.of(unlocked(1L, (short) 1), unlocked(2L, (short) 2)));
         given(gardenObjectRepository.count()).willReturn(10L);
 
