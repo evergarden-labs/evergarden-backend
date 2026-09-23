@@ -82,7 +82,7 @@ class RegionVisitConcurrencyTest extends IntegrationTest {
         given(tourApiClient.fetchNearby(new BigDecimal("37.5729"), new BigDecimal("126.9794"), 2_000))
                 .willReturn(List.of(new LocationBasedItem("c1", "12", "경복궁", "11동시", "110동시")));
 
-        List<String> rewardStatuses = fireConcurrently(() -> {
+        List<JsonNode> responses = fireConcurrently(() -> {
             MvcResult result = mvc.perform(post("/region-visits")
                             .header("Authorization", "Bearer " + accessToken)
                             .contentType(MediaType.APPLICATION_JSON)
@@ -91,10 +91,10 @@ class RegionVisitConcurrencyTest extends IntegrationTest {
                                     """))
                     .andReturn();
             assertThat(result.getResponse().getStatus()).isEqualTo(200);
-            JsonNode root = jsonMapper.readTree(result.getResponse().getContentAsString());
-            return root.at("/data/rewardStatus").asText();
+            return jsonMapper.readTree(result.getResponse().getContentAsString()).at("/data");
         });
 
+        List<String> rewardStatuses = responses.stream().map(r -> r.at("/rewardStatus").asText()).toList();
         assertThat(rewardStatuses).filteredOn("UNLOCKED"::equals).hasSize(1);
         assertThat(userGardenObjectRepository.findByUser_IdAndGardenObject_Id(user.getId(), tree.getId()))
                 .isPresent();
@@ -124,7 +124,7 @@ class RegionVisitConcurrencyTest extends IntegrationTest {
         given(tourApiClient.fetchNearby(new BigDecimal("35.1631"), new BigDecimal("129.1637"), 2_000))
                 .willReturn(List.of(new LocationBasedItem("c2", "12", "해운대해수욕장", "12동시", "120동시")));
 
-        List<String> rewardStatuses = fireConcurrently(() -> {
+        List<JsonNode> responses = fireConcurrently(() -> {
             MvcResult result = mvc.perform(post("/region-visits")
                             .header("Authorization", "Bearer " + accessToken)
                             .contentType(MediaType.APPLICATION_JSON)
@@ -133,21 +133,30 @@ class RegionVisitConcurrencyTest extends IntegrationTest {
                                     """))
                     .andReturn();
             assertThat(result.getResponse().getStatus()).isEqualTo(200);
-            JsonNode root = jsonMapper.readTree(result.getResponse().getContentAsString());
-            return root.at("/data/rewardStatus").asText();
+            return jsonMapper.readTree(result.getResponse().getContentAsString()).at("/data");
         });
 
+        List<String> rewardStatuses = responses.stream().map(r -> r.at("/rewardStatus").asText()).toList();
         assertThat(rewardStatuses).filteredOn("GROWN"::equals).hasSize(1);
         assertThat(rewardStatuses).filteredOn("COOLDOWN"::equals).hasSize(THREADS - 1);
+
+        // 경합에서 진 요청들도 실제 최신 stage(2)를 봐야 한다 — 자기가 처음 읽었던 낡은
+        // 값(1)을 그대로 돌려받으면(Hibernate 1차 캐시 문제) 여기서 잡힌다.
+        List<Integer> cooldownCurrentStages = responses.stream()
+                .filter(r -> "COOLDOWN".equals(r.at("/rewardStatus").asText()))
+                .map(r -> r.at("/reward/currentStage").asInt())
+                .toList();
+        assertThat(cooldownCurrentStages).allMatch(stage -> stage == 2);
+
         assertThat(userGardenObjectRepository.findByUser_IdAndGardenObject_Id(user.getId(), tree.getId()))
                 .get().extracting(UserGardenObject::getStage).isEqualTo((short) 2);
     }
 
-    private List<String> fireConcurrently(Callable<String> request) throws Exception {
+    private List<JsonNode> fireConcurrently(Callable<JsonNode> request) throws Exception {
         ExecutorService executor = Executors.newFixedThreadPool(THREADS);
         CountDownLatch ready = new CountDownLatch(THREADS);
         CountDownLatch start = new CountDownLatch(1);
-        List<Future<String>> futures = new ArrayList<>();
+        List<Future<JsonNode>> futures = new ArrayList<>();
 
         for (int i = 0; i < THREADS; i++) {
             futures.add(executor.submit(() -> {
@@ -160,8 +169,8 @@ class RegionVisitConcurrencyTest extends IntegrationTest {
         ready.await();
         start.countDown();
 
-        List<String> results = new ArrayList<>();
-        for (Future<String> future : futures) {
+        List<JsonNode> results = new ArrayList<>();
+        for (Future<JsonNode> future : futures) {
             results.add(future.get(10, TimeUnit.SECONDS));
         }
         executor.shutdown();
