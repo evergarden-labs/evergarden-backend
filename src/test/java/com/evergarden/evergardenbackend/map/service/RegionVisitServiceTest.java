@@ -275,6 +275,7 @@ class RegionVisitServiceTest {
         given(userGardenObjectRepository.findByUser_IdAndGardenObject_Id(USER_ID, 1L))
                 .willReturn(Optional.empty(), Optional.of(wonByOther));
         given(userGardenObjectRepository.tryInsertUnlock(eq(USER_ID), eq(1L), any())).willReturn(0);
+        given(userGardenObjectRepository.tryGrow(eq(USER_ID), eq(1L), any(), any())).willReturn(1);
         given(regionVisitRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
 
         RegionVisitResult result = service.verify(USER_ID, request(37.5, 127.0, 50.0, null));
@@ -301,12 +302,44 @@ class RegionVisitServiceTest {
         given(gardenObjectRepository.findByRegion_Code("110")).willReturn(List.of(tree));
         given(userGardenObjectRepository.findByUser_IdAndGardenObject_Id(USER_ID, 1L))
                 .willReturn(Optional.of(existing));
+        given(userGardenObjectRepository.tryGrow(eq(USER_ID), eq(1L), any(), any())).willReturn(1);
         given(regionVisitRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
 
         RegionVisitResult result = service.verify(USER_ID, request(37.5, 127.0, 50.0, null));
 
         assertThat(result.rewardStatus()).isEqualTo(RewardStatus.GROWN);
         assertThat(result.reward().previousStage()).isEqualTo(1);
+        assertThat(result.reward().currentStage()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("같은 순간 다른 요청이 먼저 키웠으면(version 불일치) 다시 읽어서 COOLDOWN으로 처리한다")
+    void 인증_성장_버전충돌() {
+        Region jongno = region("110", RegionLevel.SIGUNGU, null);
+        User user = user(USER_ID);
+        GardenObject tree = gardenObject(1L, (short) 3);
+        UserGardenObject beforeGrowth = UserGardenObject.builder()
+                .user(user).gardenObject(tree).unlockedAt(LocalDateTime.now().minusDays(10)).build();
+        ReflectionTestUtils.setField(beforeGrowth, "id", 5L);
+        ReflectionTestUtils.setField(beforeGrowth, "lastGrownAt", LocalDateTime.now().minusDays(8));
+        UserGardenObject wonByOther = UserGardenObject.builder()
+                .user(user).gardenObject(tree).unlockedAt(LocalDateTime.now().minusDays(10)).build();
+        ReflectionTestUtils.setField(wonByOther, "id", 5L);
+        ReflectionTestUtils.setField(wonByOther, "stage", (short) 2);
+        ReflectionTestUtils.setField(wonByOther, "lastGrownAt", LocalDateTime.now());
+        given(regionDeterminationService.determine(BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0)))
+                .willReturn(jongno);
+        given(userRepository.getReferenceById(USER_ID)).willReturn(user);
+        given(regionVisitRepository.existsByUser_IdAndRegion_Code(USER_ID, "110")).willReturn(true);
+        given(gardenObjectRepository.findByRegion_Code("110")).willReturn(List.of(tree));
+        given(userGardenObjectRepository.findByUser_IdAndGardenObject_Id(USER_ID, 1L))
+                .willReturn(Optional.of(beforeGrowth), Optional.of(wonByOther));
+        given(userGardenObjectRepository.tryGrow(eq(USER_ID), eq(1L), any(), any())).willReturn(0);
+        given(regionVisitRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
+
+        RegionVisitResult result = service.verify(USER_ID, request(37.5, 127.0, 50.0, null));
+
+        assertThat(result.rewardStatus()).isEqualTo(RewardStatus.COOLDOWN);
         assertThat(result.reward().currentStage()).isEqualTo(2);
     }
 
