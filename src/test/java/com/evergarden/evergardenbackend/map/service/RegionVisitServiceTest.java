@@ -3,6 +3,7 @@ package com.evergarden.evergardenbackend.map.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -232,17 +233,21 @@ class RegionVisitServiceTest {
     }
 
     @Test
-    @DisplayName("처음 해금이면 UNLOCKED — UserGardenObject를 새로 만든다")
+    @DisplayName("처음 해금이면 UNLOCKED — tryInsertUnlock()으로 새로 만든다")
     void 인증_처음해금() {
         Region jongno = region("110", RegionLevel.SIGUNGU, null);
         User user = user(USER_ID);
         GardenObject tree = gardenObject(1L, (short) 3);
+        UserGardenObject unlocked = UserGardenObject.builder()
+                .user(user).gardenObject(tree).unlockedAt(LocalDateTime.now()).build();
         given(regionDeterminationService.determine(BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0)))
                 .willReturn(jongno);
         given(userRepository.getReferenceById(USER_ID)).willReturn(user);
         given(regionVisitRepository.existsByUser_IdAndRegion_Code(USER_ID, "110")).willReturn(true);
         given(gardenObjectRepository.findByRegion_Code("110")).willReturn(List.of(tree));
-        given(userGardenObjectRepository.findByUser_IdAndGardenObject_Id(USER_ID, 1L)).willReturn(Optional.empty());
+        given(userGardenObjectRepository.findByUser_IdAndGardenObject_Id(USER_ID, 1L))
+                .willReturn(Optional.empty(), Optional.of(unlocked));
+        given(userGardenObjectRepository.tryInsertUnlock(eq(USER_ID), eq(1L), any())).willReturn(1);
         given(regionVisitRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
 
         RegionVisitResult result = service.verify(USER_ID, request(37.5, 127.0, 50.0, null));
@@ -251,7 +256,32 @@ class RegionVisitServiceTest {
         assertThat(result.reward()).isNotNull();
         assertThat(result.reward().previousStage()).isNull();
         assertThat(result.reward().currentStage()).isEqualTo(1);
-        verify(userGardenObjectRepository).save(any());
+        verify(userGardenObjectRepository).tryInsertUnlock(eq(USER_ID), eq(1L), any());
+    }
+
+    @Test
+    @DisplayName("동시에 다른 요청이 먼저 해금했으면(tryInsertUnlock == 0) 다시 읽어서 성장 판정으로 이어간다")
+    void 인증_처음해금_경합에서짐() {
+        Region jongno = region("110", RegionLevel.SIGUNGU, null);
+        User user = user(USER_ID);
+        GardenObject tree = gardenObject(1L, (short) 3);
+        UserGardenObject wonByOther = UserGardenObject.builder()
+                .user(user).gardenObject(tree).unlockedAt(LocalDateTime.now().minusDays(10)).build();
+        given(regionDeterminationService.determine(BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0)))
+                .willReturn(jongno);
+        given(userRepository.getReferenceById(USER_ID)).willReturn(user);
+        given(regionVisitRepository.existsByUser_IdAndRegion_Code(USER_ID, "110")).willReturn(true);
+        given(gardenObjectRepository.findByRegion_Code("110")).willReturn(List.of(tree));
+        given(userGardenObjectRepository.findByUser_IdAndGardenObject_Id(USER_ID, 1L))
+                .willReturn(Optional.empty(), Optional.of(wonByOther));
+        given(userGardenObjectRepository.tryInsertUnlock(eq(USER_ID), eq(1L), any())).willReturn(0);
+        given(regionVisitRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
+
+        RegionVisitResult result = service.verify(USER_ID, request(37.5, 127.0, 50.0, null));
+
+        assertThat(result.rewardStatus()).isEqualTo(RewardStatus.GROWN);
+        verify(userGardenObjectRepository, org.mockito.Mockito.times(2))
+                .findByUser_IdAndGardenObject_Id(USER_ID, 1L);
     }
 
     @Test
