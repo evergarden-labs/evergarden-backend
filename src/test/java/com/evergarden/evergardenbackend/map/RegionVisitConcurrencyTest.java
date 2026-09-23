@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 
 import com.evergarden.evergardenbackend.garden.entity.GardenObject;
 import com.evergarden.evergardenbackend.garden.entity.GardenObjectType;
+import com.evergarden.evergardenbackend.garden.entity.UserGardenObject;
 import com.evergarden.evergardenbackend.garden.repository.GardenObjectRepository;
 import com.evergarden.evergardenbackend.garden.repository.UserGardenObjectRepository;
 import com.evergarden.evergardenbackend.global.security.JwtTokenProvider;
@@ -34,15 +35,17 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * 처음 해금(ADR-006)이 진짜 동시 요청에서도 DB 유니크 제약으로 막히는지 확인한다.
- * {@code CommunityConcurrencyTest}와 같은 이유로 {@code @Transactional}을 클래스에
- * 안 건다 — 걸면 모든 스레드가 테스트 스레드의 트랜잭션에 묶여 경합 자체가 안 생긴다.
+ * 처음 해금(ADR-006, DB 유니크 제약)과 성장(《@Version》 낙관적 락)이 진짜 동시
+ * 요청에서도 한 번만 반영되는지 확인한다. {@code CommunityConcurrencyTest}와 같은
+ * 이유로 {@code @Transactional}을 클래스에 안 건다 — 걸면 모든 스레드가 테스트
+ * 스레드의 트랜잭션에 묶여 경합 자체가 안 생긴다.
  */
 @AutoConfigureMockMvc
 class RegionVisitConcurrencyTest extends IntegrationTest {
@@ -95,6 +98,49 @@ class RegionVisitConcurrencyTest extends IntegrationTest {
         assertThat(rewardStatuses).filteredOn("UNLOCKED"::equals).hasSize(1);
         assertThat(userGardenObjectRepository.findByUser_IdAndGardenObject_Id(user.getId(), tree.getId()))
                 .isPresent();
+    }
+
+    @Test
+    @DisplayName("이미 해금한 오브젝트를 동시에 여러 번 인증해도 성장은 한 번만 된다(@Version)")
+    void 동시_성장_하나만_성공() throws Exception {
+        User user = userRepository.save(User.builder().nickname("동시성성장테스터").build());
+        String accessToken = tokenProvider.issueAccessToken(user.getId(), Role.USER);
+
+        Region seoul = regionRepository.save(Region.builder()
+                .code("12동시").level(RegionLevel.SIDO).name("부산광역시")
+                .centerLat(new BigDecimal("35.1796")).centerLng(new BigDecimal("129.0756"))
+                .syncedAt(LocalDateTime.now()).build());
+        Region haeundae = regionRepository.save(Region.builder()
+                .code("120동시").parent(seoul).level(RegionLevel.SIGUNGU).name("해운대구")
+                .centerLat(new BigDecimal("35.1631")).centerLng(new BigDecimal("129.1637"))
+                .syncedAt(LocalDateTime.now()).build());
+        GardenObject tree = gardenObjectRepository.save(GardenObject.builder()
+                .region(haeundae).name("해운대 해송").type(GardenObjectType.PLANT).maxStage((short) 5).build());
+        UserGardenObject unlocked = UserGardenObject.builder()
+                .user(user).gardenObject(tree).unlockedAt(LocalDateTime.now().minusDays(10)).build();
+        ReflectionTestUtils.setField(unlocked, "lastGrownAt", LocalDateTime.now().minusDays(8));
+        userGardenObjectRepository.save(unlocked);
+
+        given(tourApiClient.fetchNearby(new BigDecimal("35.1631"), new BigDecimal("129.1637"), 2_000))
+                .willReturn(List.of(new LocationBasedItem("c2", "12", "해운대해수욕장", "12동시", "120동시")));
+
+        List<String> rewardStatuses = fireConcurrently(() -> {
+            MvcResult result = mvc.perform(post("/region-visits")
+                            .header("Authorization", "Bearer " + accessToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"lat":35.1631,"lng":129.1637,"accuracyMeters":10}
+                                    """))
+                    .andReturn();
+            assertThat(result.getResponse().getStatus()).isEqualTo(200);
+            JsonNode root = jsonMapper.readTree(result.getResponse().getContentAsString());
+            return root.at("/data/rewardStatus").asText();
+        });
+
+        assertThat(rewardStatuses).filteredOn("GROWN"::equals).hasSize(1);
+        assertThat(rewardStatuses).filteredOn("COOLDOWN"::equals).hasSize(THREADS - 1);
+        assertThat(userGardenObjectRepository.findByUser_IdAndGardenObject_Id(user.getId(), tree.getId()))
+                .get().extracting(UserGardenObject::getStage).isEqualTo((short) 2);
     }
 
     private List<String> fireConcurrently(Callable<String> request) throws Exception {
