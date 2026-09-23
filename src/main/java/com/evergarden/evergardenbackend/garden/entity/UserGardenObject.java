@@ -88,7 +88,19 @@ public class UserGardenObject extends BaseTimeEntity {
         if (stage >= gardenObject.getMaxStage()) {
             return false;
         }
-        return lastGrownAt == null || !now.isBefore(lastGrownAt.plusDays(cooldownDays));
+        return !now.isBefore(nextGrowableAt(cooldownDays));
+    }
+
+    /**
+     * 다음 성장 가능 시각. 아직 한 번도 안 자랐어도({@code lastGrownAt == null}) 방금
+     * 해금한 거라면 {@code unlockedAt}부터 쿨다운을 잰다 — 해금 직후 바로 재인증해도
+     * 곧장 자라면 "7일 안 재인증은 변화 없음"(ADR-018)이 깨진다. {@code GET
+     * /region-visits/{visitId}/reward}(GARDEN-02)가 {@code nextAvailableAt}을
+     * 채울 때도 이 기준을 그대로 써야 해서 공개 메서드로 둔다.
+     */
+    public LocalDateTime nextGrowableAt(int cooldownDays) {
+        LocalDateTime lastEvent = lastGrownAt != null ? lastGrownAt : unlockedAt;
+        return lastEvent.plusDays(cooldownDays);
     }
 
     /** 정원 안에서 위치를 옮긴다. */
