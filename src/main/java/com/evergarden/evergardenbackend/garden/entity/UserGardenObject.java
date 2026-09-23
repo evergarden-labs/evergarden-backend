@@ -12,6 +12,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -61,6 +62,15 @@ public class UserGardenObject extends BaseTimeEntity {
     @Column(name = "last_grown_at")
     private LocalDateTime lastGrownAt;
 
+    /**
+     * 성장 경합(ADR-006과 같은 이유)을 막는 데 쓴다 — {@code UserGardenObjectRepository
+     * .tryGrow()}가 조건부 {@code UPDATE ... WHERE version = ?}로 이 값을 확인한다.
+     * JPA {@code @Version}으로 선언해 두면 엔티티를 직접 저장하는 다른 경로가 생겨도
+     * 낙관적 락이 자동으로 걸린다.
+     */
+    @Version
+    private Long version;
+
     @Builder
     private UserGardenObject(User user, GardenObject gardenObject, LocalDateTime unlockedAt) {
         this.user = user;
@@ -70,20 +80,13 @@ public class UserGardenObject extends BaseTimeEntity {
     }
 
     /**
-     * 쿨다운이 지났고 아직 최대 단계가 아니면 한 단계 자란다(GARDEN-02).
+     * 쿨다운이 지났고 최대 단계가 아닌지(GARDEN-02). 인증 자체를 막지는 않는다(ADR-038).
      *
-     * @return 실제로 자랐으면 {@code true}
+     * <p>실제 성장은 여기서 엔티티를 바로 고치지 않고 {@code UserGardenObjectRepository
+     * .tryGrow()}(조건부 UPDATE)로 한다 — 같은 사용자가 같은 오브젝트를 거의 동시에
+     * 두 번 인증하면 두 트랜잭션이 이 판정을 똑같이 통과할 수 있어, 실제 반영은 DB가
+     * {@code version} 일치 여부로 한 번만 받아주게 맡긴다.
      */
-    public boolean growIfPossible(LocalDateTime now, int cooldownDays) {
-        if (!canGrowAt(now, cooldownDays)) {
-            return false;
-        }
-        this.stage++;
-        this.lastGrownAt = now;
-        return true;
-    }
-
-    /** 쿨다운이 지났고 최대 단계가 아닌지. 인증 자체를 막지는 않는다(ADR-038) */
     public boolean canGrowAt(LocalDateTime now, int cooldownDays) {
         if (stage >= gardenObject.getMaxStage()) {
             return false;
