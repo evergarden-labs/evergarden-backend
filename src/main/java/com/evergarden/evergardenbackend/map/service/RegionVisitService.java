@@ -131,13 +131,20 @@ public class RegionVisitService {
         Optional<UserGardenObject> existing =
                 userGardenObjectRepository.findByUser_IdAndGardenObject_Id(user.getId(), gardenObject.getId());
         if (existing.isEmpty()) {
-            UserGardenObject unlocked = UserGardenObject.builder()
-                    .user(user).gardenObject(gardenObject).unlockedAt(now).build();
-            userGardenObjectRepository.save(unlocked);
-            return new RewardOutcome(RewardStatus.UNLOCKED, gardenObject, null, unlocked.getStage(), null);
+            int inserted = userGardenObjectRepository.tryInsertUnlock(user.getId(), gardenObject.getId(), now);
+            if (inserted == 1) {
+                UserGardenObject unlocked = userGardenObjectRepository
+                        .findByUser_IdAndGardenObject_Id(user.getId(), gardenObject.getId())
+                        .orElseThrow(() -> new IllegalStateException(
+                                "방금 해금 삽입에 성공했는데 다시 못 찾음: gardenObjectId=" + gardenObject.getId()));
+                return new RewardOutcome(RewardStatus.UNLOCKED, gardenObject, null, unlocked.getStage(), null);
+            }
+            // 동시에 들어온 다른 요청이 먼저 해금했다(inserted == 0) — 그 행을 읽어 성장 판정으로 이어간다.
+            existing = userGardenObjectRepository.findByUser_IdAndGardenObject_Id(user.getId(), gardenObject.getId());
         }
 
-        UserGardenObject userGardenObject = existing.get();
+        UserGardenObject userGardenObject = existing.orElseThrow(() -> new IllegalStateException(
+                "해금 경합 직후에도 UserGardenObject를 찾지 못함: gardenObjectId=" + gardenObject.getId()));
         short beforeStage = userGardenObject.getStage();
         if (userGardenObject.growIfPossible(now, COOLDOWN_DAYS)) {
             return new RewardOutcome(RewardStatus.GROWN, gardenObject, beforeStage, userGardenObject.getStage(), null);
