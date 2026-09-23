@@ -61,6 +61,7 @@ class RegionVisitIntegrationTest extends IntegrationTest {
 
     String accessToken;
     Region jongno;
+    Region jung;
 
     @BeforeEach
     void setUp() {
@@ -75,11 +76,20 @@ class RegionVisitIntegrationTest extends IntegrationTest {
                 .code("110").parent(seoul).level(RegionLevel.SIGUNGU).name("종로구")
                 .centerLat(new BigDecimal("37.5729")).centerLng(new BigDecimal("126.9794"))
                 .syncedAt(LocalDateTime.now()).build());
+        jung = regionRepository.save(Region.builder()
+                .code("140").parent(seoul).level(RegionLevel.SIGUNGU).name("중구")
+                .centerLat(new BigDecimal("37.5641")).centerLng(new BigDecimal("126.9979"))
+                .syncedAt(LocalDateTime.now()).build());
     }
 
     private void givenNearby(String signguCode) {
         given(tourApiClient.fetchNearby(new BigDecimal("37.5729"), new BigDecimal("126.9794"), 2_000))
                 .willReturn(List.of(new LocationBasedItem("c1", "12", "경복궁", "11", signguCode)));
+    }
+
+    private void givenNearbyAt(BigDecimal lat, BigDecimal lng, String signguCode) {
+        given(tourApiClient.fetchNearby(lat, lng, 2_000))
+                .willReturn(List.of(new LocationBasedItem("c2", "12", "명동성당", "11", signguCode)));
     }
 
     @Test
@@ -134,6 +144,45 @@ class RegionVisitIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.data.visited").value(true))
                 .andExpect(jsonPath("$.data.visitCount").value(2))
                 .andExpect(jsonPath("$.data.availableGardenObjects[0].gardenObjectId").value(tree.getId()));
+    }
+
+    @Test
+    @DisplayName("서로 다른 지역을 인증하면 각 지역 오브젝트가 독립적으로 해금·관리된다")
+    void 서로다른지역_독립적으로_해금() throws Exception {
+        GardenObject jongnoTree = gardenObjectRepository.save(GardenObject.builder()
+                .region(jongno).name("종로 은행나무").type(GardenObjectType.PLANT).maxStage((short) 3).build());
+        GardenObject jungTree = gardenObjectRepository.save(GardenObject.builder()
+                .region(jung).name("중구 소나무").type(GardenObjectType.PLANT).maxStage((short) 3).build());
+        givenNearby("110");
+        givenNearbyAt(new BigDecimal("37.5641"), new BigDecimal("126.9979"), "140");
+
+        mvc.perform(post("/region-visits")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"lat":37.5729,"lng":126.9794,"accuracyMeters":10}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.isFirstVisit").value(true))
+                .andExpect(jsonPath("$.data.rewardStatus").value("UNLOCKED"))
+                .andExpect(jsonPath("$.data.reward.gardenObject.gardenObjectId").value(jongnoTree.getId()));
+
+        mvc.perform(post("/region-visits")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"lat":37.5641,"lng":126.9979,"accuracyMeters":10}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.isFirstVisit").value(true))
+                .andExpect(jsonPath("$.data.rewardStatus").value("UNLOCKED"))
+                .andExpect(jsonPath("$.data.reward.gardenObject.gardenObjectId").value(jungTree.getId()));
+
+        mvc.perform(get("/garden").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.unlockedCount").value(2))
+                .andExpect(jsonPath("$.data.objects[0].stage").value(1))
+                .andExpect(jsonPath("$.data.objects[1].stage").value(1));
     }
 
     @Test
