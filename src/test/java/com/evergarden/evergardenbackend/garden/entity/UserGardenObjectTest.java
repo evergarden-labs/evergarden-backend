@@ -8,8 +8,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /**
- * 쿨다운 경계(ADR-018)를 확인한다. {@code RegionVisitIntegrationTest}가 실제로 잡았던
- * 버그(해금 직후 재인증하면 쿨다운 없이 곧장 자람)의 회귀를 여기서 직접 잠근다.
+ * 쿨다운 경계(ADR-018)를 확인한다. 실제 성장은 {@code UserGardenObjectRepository
+ * .tryGrow()}(조건부 UPDATE)가 하므로, 엔티티는 "지금 자랄 수 있는지"만 판정한다
+ * ({@code canGrowAt()}) — {@code RegionVisitIntegrationTest}가 실제로 잡았던 버그
+ * (해금 직후 재인증하면 쿨다운 없이 곧장 자람)의 회귀를 여기서 직접 잠근다.
  */
 class UserGardenObjectTest {
 
@@ -37,14 +39,11 @@ class UserGardenObjectTest {
     }
 
     @Test
-    void 해금_직후_바로_재인증하면_쿨다운이라_안_자란다() {
+    void 해금_직후_바로_재인증하면_쿨다운이라_못_자란다() {
         LocalDateTime unlockedAt = LocalDateTime.of(2026, 1, 1, 10, 0);
         UserGardenObject object = unlockedAt(unlockedAt, (short) 3);
 
-        boolean grew = object.growIfPossible(unlockedAt.plusMinutes(1), 7);
-
-        assertThat(grew).isFalse();
-        assertThat(object.getStage()).isEqualTo((short) 1);
+        assertThat(object.canGrowAt(unlockedAt.plusMinutes(1), 7)).isFalse();
     }
 
     @Test
@@ -52,43 +51,33 @@ class UserGardenObjectTest {
         LocalDateTime unlockedAt = LocalDateTime.of(2026, 1, 1, 10, 0);
         UserGardenObject object = unlockedAt(unlockedAt, (short) 3);
 
-        boolean grew = object.growIfPossible(unlockedAt.plusDays(7).minusSeconds(1), 7);
-
-        assertThat(grew).isFalse();
+        assertThat(object.canGrowAt(unlockedAt.plusDays(7).minusSeconds(1), 7)).isFalse();
     }
 
     @Test
-    void 해금_후_정확히_7일째면_자란다() {
+    void 해금_후_정확히_7일째면_자랄_수_있다() {
         LocalDateTime unlockedAt = LocalDateTime.of(2026, 1, 1, 10, 0);
         UserGardenObject object = unlockedAt(unlockedAt, (short) 3);
 
-        boolean grew = object.growIfPossible(unlockedAt.plusDays(7), 7);
-
-        assertThat(grew).isTrue();
-        assertThat(object.getStage()).isEqualTo((short) 2);
+        assertThat(object.canGrowAt(unlockedAt.plusDays(7), 7)).isTrue();
     }
 
     @Test
     void 한번_자란_뒤엔_lastGrownAt_기준으로_다시_쿨다운이_걸린다() {
         LocalDateTime unlockedAt = LocalDateTime.of(2026, 1, 1, 10, 0);
         UserGardenObject object = unlockedAt(unlockedAt, (short) 3);
-        object.growIfPossible(unlockedAt.plusDays(7), 7);
+        ReflectionTestUtils.setField(object, "stage", (short) 2);
+        ReflectionTestUtils.setField(object, "lastGrownAt", unlockedAt.plusDays(7));
 
-        boolean grewAgainTooSoon = object.growIfPossible(unlockedAt.plusDays(8), 7);
-
-        assertThat(grewAgainTooSoon).isFalse();
-        assertThat(object.getStage()).isEqualTo((short) 2);
+        assertThat(object.canGrowAt(unlockedAt.plusDays(8), 7)).isFalse();
     }
 
     @Test
-    void 최대_단계면_쿨다운이_지나도_안_자란다() {
+    void 최대_단계면_쿨다운이_지나도_못_자란다() {
         LocalDateTime unlockedAt = LocalDateTime.of(2026, 1, 1, 10, 0);
         UserGardenObject object = unlockedAt(unlockedAt, (short) 1);
 
-        boolean grew = object.growIfPossible(unlockedAt.plusDays(7), 7);
-
-        assertThat(grew).isFalse();
-        assertThat(object.getStage()).isEqualTo((short) 1);
+        assertThat(object.canGrowAt(unlockedAt.plusDays(7), 7)).isFalse();
     }
 
     @Test
@@ -104,7 +93,7 @@ class UserGardenObjectTest {
         LocalDateTime unlockedAt = LocalDateTime.of(2026, 1, 1, 10, 0);
         UserGardenObject object = unlockedAt(unlockedAt, (short) 3);
         LocalDateTime grownAt = unlockedAt.plusDays(7);
-        object.growIfPossible(grownAt, 7);
+        ReflectionTestUtils.setField(object, "lastGrownAt", grownAt);
 
         assertThat(object.nextGrowableAt(7)).isEqualTo(grownAt.plusDays(7));
     }
