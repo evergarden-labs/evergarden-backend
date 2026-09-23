@@ -7,10 +7,12 @@ import com.evergarden.evergardenbackend.place.client.dto.DetailCommonItem;
 import com.evergarden.evergardenbackend.place.client.dto.DetailImageItem;
 import com.evergarden.evergardenbackend.place.client.dto.DetailIntroItem;
 import com.evergarden.evergardenbackend.place.client.dto.LdongDistrictItem;
+import com.evergarden.evergardenbackend.place.client.dto.LocationBasedItem;
 import com.evergarden.evergardenbackend.place.client.dto.RegionCode;
 import com.evergarden.evergardenbackend.place.client.dto.SyncAreaBasedItem;
 import com.evergarden.evergardenbackend.place.client.dto.TourApiEnvelope;
 import com.evergarden.evergardenbackend.place.config.TourApiProperties;
+import java.math.BigDecimal;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -40,6 +42,8 @@ public class TourApiClient {
     private static final String LDONG_CODE_PATH = "/ldongCode2";
     private static final String AREA_BASED_LIST_PATH = "/areaBasedList2";
     private static final String AREA_BASED_SYNC_LIST_PATH = "/areaBasedSyncList2";
+    private static final String LOCATION_BASED_LIST_PATH = "/locationBasedList2";
+    private static final int NEARBY_ROWS = 20;
     private static final String DETAIL_COMMON_PATH = "/detailCommon2";
     private static final String DETAIL_INTRO_PATH = "/detailIntro2";
     private static final String DETAIL_IMAGE_PATH = "/detailImage2";
@@ -123,6 +127,28 @@ public class TourApiClient {
         return envelope == null
                 ? new AreaBasedSyncPage(List.of(), 0)
                 : new AreaBasedSyncPage(envelope.items(), envelope.totalCount());
+    }
+
+    /**
+     * 위치기반 관광정보 조회({@code locationBasedList2}). 좌표 근처 관광지를 거리순으로
+     * 받는다({@code arrange=S}) — MAP-01이 "가장 가까운 항목의 지역코드"로 현재 지역을
+     * 판정하는 데 쓴다(콘텐츠랩에는 좌표 하나로 바로 지역을 물어보는 API가 없다).
+     * 반경 안에 하나도 없으면 빈 목록 — 호출하는 쪽이 {@code REGION_NOT_DETERMINED}로 처리한다.
+     */
+    public List<LocationBasedItem> fetchNearby(BigDecimal lat, BigDecimal lng, int radiusMeters) {
+        String query = commonQuery(NEARBY_ROWS)
+                + "&mapX=" + lng
+                + "&mapY=" + lat
+                + "&radius=" + radiusMeters
+                + "&arrange=S";
+        URI uri = URI.create(tourApiProperties.baseUrl() + LOCATION_BASED_LIST_PATH + "?" + query);
+
+        TourApiEnvelope<LocationBasedItem> envelope = tourApiRestClient.get()
+                .uri(uri)
+                .retrieve()
+                .body(new ParameterizedTypeReference<TourApiEnvelope<LocationBasedItem>>() {
+                });
+        return envelope == null ? List.of() : envelope.items();
     }
 
     /**
