@@ -1,10 +1,14 @@
 package com.evergarden.evergardenbackend.map.entity;
 
+import com.evergarden.evergardenbackend.garden.entity.GardenObject;
+import com.evergarden.evergardenbackend.garden.entity.RewardStatus;
 import com.evergarden.evergardenbackend.place.entity.Region;
 import com.evergarden.evergardenbackend.user.entity.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -71,14 +75,50 @@ public class RegionVisit {
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    /**
+     * 이 인증이 정원에 남긴 결과의 스냅샷(GARDEN-02). 인증 시점에 한 번 계산해서
+     * 여기 같이 저장한다 — 이후 재방문으로 {@code UserGardenObject}가 더 자라도
+     * "그때 이 인증으로 무슨 일이 있었는지"는 안 바뀌어야 {@code getVisitReward}가
+     * 다시 봐도 같은 내용을 보여줄 수 있다.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "reward_status", nullable = false, length = 10)
+    private RewardStatus rewardStatus;
+
+    /** 그 인증으로 해금·성장한 오브젝트. {@code rewardStatus}가 {@code NONE}이면 {@code null} */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "garden_object_id")
+    private GardenObject gardenObject;
+
+    @Column(name = "previous_stage")
+    private Short previousStage;
+
+    @Column(name = "current_stage")
+    private Short currentStage;
+
+    /** {@code rewardStatus}가 {@code COOLDOWN}일 때만 채운다(ADR-018) */
+    @Column(name = "next_available_at")
+    private LocalDateTime nextAvailableAt;
+
     @Builder
     private RegionVisit(User user, Region region, BigDecimal lat, BigDecimal lng,
-                        BigDecimal accuracyMeters, LocalDateTime verifiedAt) {
+                        BigDecimal accuracyMeters, LocalDateTime verifiedAt,
+                        RewardStatus rewardStatus, GardenObject gardenObject,
+                        Short previousStage, Short currentStage, LocalDateTime nextAvailableAt) {
         this.user = user;
         this.region = region;
         this.lat = lat;
         this.lng = lng;
         this.accuracyMeters = accuracyMeters;
         this.verifiedAt = verifiedAt;
+        this.rewardStatus = rewardStatus;
+        this.gardenObject = gardenObject;
+        this.previousStage = previousStage;
+        this.currentStage = currentStage;
+        this.nextAvailableAt = nextAvailableAt;
+    }
+
+    public boolean isOwnedBy(Long userId) {
+        return user.getId().equals(userId);
     }
 }
