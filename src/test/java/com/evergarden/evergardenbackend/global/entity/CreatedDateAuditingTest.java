@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.evergarden.evergardenbackend.auth.entity.SocialAccount;
 import com.evergarden.evergardenbackend.auth.entity.SocialProvider;
 import com.evergarden.evergardenbackend.auth.repository.SocialAccountRepository;
+import com.evergarden.evergardenbackend.garden.entity.RewardStatus;
 import com.evergarden.evergardenbackend.map.entity.RegionVisit;
 import com.evergarden.evergardenbackend.map.repository.RegionVisitRepository;
 import com.evergarden.evergardenbackend.notification.entity.Notification;
@@ -77,7 +78,7 @@ class CreatedDateAuditingTest extends IntegrationTest {
 
         RegionVisit saved = regionVisitRepository.saveAndFlush(RegionVisit.builder()
                 .user(user()).region(region).lat(BigDecimal.valueOf(37.5665)).lng(BigDecimal.valueOf(126.9780))
-                .verifiedAt(LocalDateTime.now()).build());
+                .verifiedAt(LocalDateTime.now()).rewardStatus(RewardStatus.NONE).build());
 
         assertThat(saved.getCreatedAt()).isNotNull();
     }
