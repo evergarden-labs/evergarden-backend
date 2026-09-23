@@ -58,6 +58,23 @@ public class RegionVisitService {
         }).toList();
     }
 
+    /**
+     * 지역 하나의 방문 상태(MAP-03의 {@code getRegion}이 쓴다). {@link #listMyRegions}와
+     * 같은 {@code SIDO} 합산 규칙을 쓴다 — 지도 화면과 지역 상세 화면에서 같은 도시가
+     * 다르게 보이면 안 된다.
+     */
+    @Transactional(readOnly = true)
+    public RegionVisitStatus getStatus(Long userId, Region region) {
+        List<String> codes = new ArrayList<>();
+        codes.add(region.getCode());
+        if (region.getLevel() == RegionLevel.SIDO) {
+            regionRepository.findByParent_Code(region.getCode()).forEach(child -> codes.add(child.getCode()));
+        }
+        Map<String, RegionVisitAggregate> aggregates = regionVisitRepository.aggregateByUser(userId).stream()
+                .collect(Collectors.toMap(RegionVisitAggregate::getRegionCode, a -> a));
+        return toStatus(region, codes, aggregates);
+    }
+
     private RegionVisitStatus toStatus(Region region, List<String> aggregatedCodes,
                                         Map<String, RegionVisitAggregate> aggregates) {
         long visitCount = aggregatedCodes.stream()
