@@ -19,4 +19,7 @@ public interface RegionVisitRepository extends JpaRepository<RegionVisit, Long> 
             GROUP BY rv.region.code
             """)
     List<RegionVisitAggregate> aggregateByUser(@Param("userId") Long userId);
+
+    /** 그 지역에 인증 기록이 이미 있는지(MAP-01의 {@code isFirstVisit} 판정). */
+    boolean existsByUser_IdAndRegion_Code(Long userId, String regionCode);
 }
