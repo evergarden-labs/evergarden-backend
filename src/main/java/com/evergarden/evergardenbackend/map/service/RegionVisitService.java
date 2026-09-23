@@ -116,10 +116,11 @@ public class RegionVisitService {
 
     /**
      * 정원 보상 계산(GARDEN-02). 그 지역에 지정된 오브젝트가 없으면 {@code NONE}.
-     * 있으면 처음 해금이면 {@code UNLOCKED}, 이미 있으면 {@code growIfPossible()}로
-     * 자랐으면 {@code GROWN}, 못 자랐으면(쿨다운 중이거나 이미 최대 단계) {@code COOLDOWN} —
-     * "이미 최대 단계"를 위한 별도 상태가 명세에 없어 같은 코드로 합쳤다(이땐
-     * {@code nextAvailableAt}이 {@code null}이라 "다음이 없다"는 뜻으로 구분된다).
+     * 있으면 처음 해금이면 {@code UNLOCKED}, 이미 있으면 {@code canGrowAt()}이 참이고
+     * {@code tryGrow()}(조건부 UPDATE)가 실제로 반영됐으면 {@code GROWN}, 못 자랐으면
+     * (쿨다운 중·이미 최대 단계·경합에서 짐) {@code COOLDOWN} — "이미 최대 단계"를 위한
+     * 별도 상태가 명세에 없어 같은 코드로 합쳤다(이땐 {@code nextAvailableAt}이
+     * {@code null}이라 "다음이 없다"는 뜻으로 구분된다).
      */
     private RewardOutcome applyReward(User user, Region region, LocalDateTime now) {
         Optional<GardenObject> assigned = gardenObjectRepository.findByRegion_Code(region.getCode()).stream().findFirst();
@@ -146,12 +147,21 @@ public class RegionVisitService {
         UserGardenObject userGardenObject = existing.orElseThrow(() -> new IllegalStateException(
                 "해금 경합 직후에도 UserGardenObject를 찾지 못함: gardenObjectId=" + gardenObject.getId()));
         short beforeStage = userGardenObject.getStage();
-        if (userGardenObject.growIfPossible(now, COOLDOWN_DAYS)) {
-            return new RewardOutcome(RewardStatus.GROWN, gardenObject, beforeStage, userGardenObject.getStage(), null);
+        if (userGardenObject.canGrowAt(now, COOLDOWN_DAYS)) {
+            int grown = userGardenObjectRepository.tryGrow(
+                    user.getId(), gardenObject.getId(), now, userGardenObject.getVersion());
+            if (grown == 1) {
+                return new RewardOutcome(RewardStatus.GROWN, gardenObject, beforeStage, (short) (beforeStage + 1), null);
+            }
+            // 같은 순간 다른 요청이 먼저 키웠다(version 불일치) — 최신 상태를 다시 읽어 COOLDOWN으로 처리한다.
+            userGardenObject = userGardenObjectRepository
+                    .findByUser_IdAndGardenObject_Id(user.getId(), gardenObject.getId())
+                    .orElseThrow(() -> new IllegalStateException(
+                            "성장 경합 직후에도 UserGardenObject를 찾지 못함: gardenObjectId=" + gardenObject.getId()));
         }
-        LocalDateTime nextAvailableAt = beforeStage >= gardenObject.getMaxStage()
+        LocalDateTime nextAvailableAt = userGardenObject.getStage() >= gardenObject.getMaxStage()
                 ? null : userGardenObject.nextGrowableAt(COOLDOWN_DAYS);
-        return new RewardOutcome(RewardStatus.COOLDOWN, gardenObject, null, beforeStage, nextAvailableAt);
+        return new RewardOutcome(RewardStatus.COOLDOWN, gardenObject, null, userGardenObject.getStage(), nextAvailableAt);
     }
 
     private record RewardOutcome(RewardStatus status, GardenObject gardenObject,
