@@ -15,6 +15,7 @@ import com.evergarden.evergardenbackend.garden.entity.RewardStatus;
 import com.evergarden.evergardenbackend.garden.entity.UserGardenObject;
 import com.evergarden.evergardenbackend.garden.repository.GardenObjectRepository;
 import com.evergarden.evergardenbackend.garden.repository.UserGardenObjectRepository;
+import com.evergarden.evergardenbackend.garden.repository.UserGardenObjectSnapshot;
 import com.evergarden.evergardenbackend.global.exception.BusinessException;
 import com.evergarden.evergardenbackend.global.exception.ErrorCode;
 import com.evergarden.evergardenbackend.map.dto.RegionVisitRequest;
@@ -322,25 +323,26 @@ class RegionVisitServiceTest {
                 .user(user).gardenObject(tree).unlockedAt(LocalDateTime.now().minusDays(10)).build();
         ReflectionTestUtils.setField(beforeGrowth, "id", 5L);
         ReflectionTestUtils.setField(beforeGrowth, "lastGrownAt", LocalDateTime.now().minusDays(8));
-        UserGardenObject wonByOther = UserGardenObject.builder()
-                .user(user).gardenObject(tree).unlockedAt(LocalDateTime.now().minusDays(10)).build();
-        ReflectionTestUtils.setField(wonByOther, "id", 5L);
-        ReflectionTestUtils.setField(wonByOther, "stage", (short) 2);
-        ReflectionTestUtils.setField(wonByOther, "lastGrownAt", LocalDateTime.now());
+        LocalDateTime grownByOtherAt = LocalDateTime.now();
+        UserGardenObjectSnapshot snapshot = mock(UserGardenObjectSnapshot.class);
+        given(snapshot.getStage()).willReturn((short) 2);
+        given(snapshot.getLastGrownAt()).willReturn(grownByOtherAt);
         given(regionDeterminationService.determine(BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0)))
                 .willReturn(jongno);
         given(userRepository.getReferenceById(USER_ID)).willReturn(user);
         given(regionVisitRepository.existsByUser_IdAndRegion_Code(USER_ID, "110")).willReturn(true);
         given(gardenObjectRepository.findByRegion_Code("110")).willReturn(List.of(tree));
         given(userGardenObjectRepository.findByUser_IdAndGardenObject_Id(USER_ID, 1L))
-                .willReturn(Optional.of(beforeGrowth), Optional.of(wonByOther));
+                .willReturn(Optional.of(beforeGrowth));
         given(userGardenObjectRepository.tryGrow(eq(USER_ID), eq(1L), any(), any())).willReturn(0);
+        given(userGardenObjectRepository.findSnapshot(USER_ID, 1L)).willReturn(Optional.of(snapshot));
         given(regionVisitRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
 
         RegionVisitResult result = service.verify(USER_ID, request(37.5, 127.0, 50.0, null));
 
         assertThat(result.rewardStatus()).isEqualTo(RewardStatus.COOLDOWN);
         assertThat(result.reward().currentStage()).isEqualTo(2);
+        assertThat(result.reward().nextAvailableAt()).isEqualTo(grownByOtherAt.plusDays(7));
     }
 
     @Test
