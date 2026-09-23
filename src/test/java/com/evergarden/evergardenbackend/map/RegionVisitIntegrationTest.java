@@ -60,12 +60,13 @@ class RegionVisitIntegrationTest extends IntegrationTest {
     @MockitoBean TourApiClient tourApiClient;
 
     String accessToken;
+    User user;
     Region jongno;
     Region jung;
 
     @BeforeEach
     void setUp() {
-        User user = userRepository.save(User.builder().nickname("테스터").build());
+        user = userRepository.save(User.builder().nickname("테스터").build());
         accessToken = tokenProvider.issueAccessToken(user.getId(), Role.USER);
 
         Region seoul = regionRepository.save(Region.builder()
@@ -133,11 +134,13 @@ class RegionVisitIntegrationTest extends IntegrationTest {
                 .andExpect(jsonPath("$.data.unlockedCount").value(1))
                 .andExpect(jsonPath("$.data.objects[0].stage").value(1));
 
-        mvc.perform(get("/users/me/regions?level=SIGUNGU").header("Authorization", "Bearer " + accessToken))
+        MvcResult listResult = mvc.perform(get("/users/me/regions?level=SIGUNGU")
+                        .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].region.code").value("110"))
-                .andExpect(jsonPath("$.data[0].visited").value(true))
-                .andExpect(jsonPath("$.data[0].visitCount").value(2));
+                .andReturn();
+        JsonNode jongnoStatus = findRegionStatus(listResult, "110");
+        assertThat(jongnoStatus.at("/visited").asBoolean()).isTrue();
+        assertThat(jongnoStatus.at("/visitCount").asInt()).isEqualTo(2);
 
         mvc.perform(get("/regions/110").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
@@ -197,7 +200,7 @@ class RegionVisitIntegrationTest extends IntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("LOCATION_ACCURACY_TOO_LOW"));
 
-        assertThat(regionVisitRepository.count()).isZero();
+        assertThat(regionVisitRepository.aggregateByUser(user.getId())).isEmpty();
     }
 
     @Test
@@ -271,5 +274,20 @@ class RegionVisitIntegrationTest extends IntegrationTest {
     private Long visitId(MvcResult result) throws Exception {
         JsonNode root = jsonMapper.readTree(result.getResponse().getContentAsString());
         return root.at("/data/visitId").asLong();
+    }
+
+    /**
+     * 목록에서 지역코드로 하나를 찾는다. {@code $.data[0]}처럼 배열 순서에 기대면
+     * 다른 테스트(특히 {@code @Transactional} 없이 도는 {@code RegionVisitConcurrencyTest})가
+     * 커밋해 둔 지역까지 같이 잡혀서 순서가 흔들릴 수 있다 — 그래서 코드로 직접 찾는다.
+     */
+    private JsonNode findRegionStatus(MvcResult result, String regionCode) throws Exception {
+        JsonNode data = jsonMapper.readTree(result.getResponse().getContentAsString()).at("/data");
+        for (JsonNode node : data) {
+            if (regionCode.equals(node.at("/region/code").asText())) {
+                return node;
+            }
+        }
+        throw new AssertionError("목록에서 지역코드를 못 찾음: " + regionCode);
     }
 }
