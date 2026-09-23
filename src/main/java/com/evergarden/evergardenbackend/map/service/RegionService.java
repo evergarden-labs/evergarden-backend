@@ -48,6 +48,11 @@ public class RegionService {
      * 지역에 속한 관광지·음식점 훑어보기(MAP-03). {@code PlaceQueryService.search()}를
      * 그대로 위임한다 — 이미 동기화해 둔 {@code places} 테이블만 보는 점(라이브 TourAPI
      * 재호출 없음)까지 포함해 {@code /places/search}(PLAN-06)와 결과가 같다.
+     *
+     * <p>명세엔 이 오퍼레이션의 {@code 503 TOUR_API_UNAVAILABLE}이 문서화돼 있지만,
+     * {@code search()}가 라이브 호출을 안 해서 지금 구조로는 실제로 던져질 일이 없다
+     * ({@code searchPlaces}(PLAN-06)엔 애초에 이 코드가 문서화조차 안 돼 있어 같은 결론).
+     * 나중에 이 경로가 라이브 조회로 바뀌면 그때 다시 볼 것.
      */
     public Page<PlaceSummary> listRegionPlaces(String regionCode, String contentTypeId, Pageable pageable) {
         return placeQueryService.search(null, regionCode, contentTypeId, pageable);
