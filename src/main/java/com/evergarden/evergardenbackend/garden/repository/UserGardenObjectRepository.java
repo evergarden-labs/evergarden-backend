@@ -53,4 +53,18 @@ public interface UserGardenObjectRepository extends JpaRepository<UserGardenObje
             """, nativeQuery = true)
     int tryGrow(@Param("userId") Long userId, @Param("gardenObjectId") Long gardenObjectId,
                 @Param("now") LocalDateTime now, @Param("expectedVersion") Long expectedVersion);
+
+    /**
+     * {@code tryGrow()}에서 경합에 진 쪽이 진짜 최신 {@code stage}·{@code lastGrownAt}을
+     * 읽는 데 쓴다. {@link #findByUser_IdAndGardenObject_Id}로 다시 읽으면 같은 트랜잭션
+     * 안에서 이미 한 번 읽은 적 있는 엔티티라 Hibernate 1차 캐시가 그 낡은 인스턴스를
+     * 그대로 돌려준다 — 엔티티가 아닌 원시값 프로젝션으로 우회해야 진짜 DB 값을 본다.
+     */
+    @Query(value = """
+            SELECT stage, last_grown_at AS lastGrownAt
+            FROM user_garden_objects
+            WHERE user_id = :userId AND garden_object_id = :gardenObjectId
+            """, nativeQuery = true)
+    Optional<UserGardenObjectSnapshot> findSnapshot(
+            @Param("userId") Long userId, @Param("gardenObjectId") Long gardenObjectId);
 }
