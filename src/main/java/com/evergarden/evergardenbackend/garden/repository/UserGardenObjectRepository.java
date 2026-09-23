@@ -1,8 +1,70 @@
 package com.evergarden.evergardenbackend.garden.repository;
 
 import com.evergarden.evergardenbackend.garden.entity.UserGardenObject;
-
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface UserGardenObjectRepository extends JpaRepository<UserGardenObject, Long> {
+
+    /** 해금한 것만, 해금한 순서로(GARDEN-01) — 아직 안 해금한 건 이 테이블에 행 자체가 없다. */
+    List<UserGardenObject> findByUser_IdOrderByUnlockedAtAsc(Long userId);
+
+    /** 이미 해금했는지(GARDEN-02) — 있으면 성장 판정, 없으면 신규 해금. */
+    Optional<UserGardenObject> findByUser_IdAndGardenObject_Id(Long userId, Long gardenObjectId);
+
+    /**
+     * 처음 해금을 시도한다(GARDEN-02). "먼저 있는지 확인하고 없으면 저장"은 두 요청이
+     * 거의 동시에 들어오면(더블탭·재시도 등) 둘 다 "없음"을 보고 둘 다 만들려 들 수 있어
+     * (ADR-006) 대신 이 한 문장으로 시도한다 — {@code (user_id, garden_object_id)} 유니크
+     * 제약과 부딪히면 예외 없이 그냥 아무 일도 안 하고, 몇 행이 실제로 들어갔는지만 돌려준다.
+     *
+     * @return 실제로 새로 만들었으면 {@code 1}, 이미 있어서 아무 일도 안 했으면 {@code 0}
+     */
+    @Modifying
+    @Query(value = """
+            INSERT INTO user_garden_objects (user_id, garden_object_id, stage, unlocked_at)
+            VALUES (:userId, :gardenObjectId, 1, :unlockedAt)
+            ON CONFLICT (user_id, garden_object_id) DO NOTHING
+            """, nativeQuery = true)
+    int tryInsertUnlock(@Param("userId") Long userId, @Param("gardenObjectId") Long gardenObjectId,
+                         @Param("unlockedAt") LocalDateTime unlockedAt);
+
+    /**
+     * 한 단계 성장을 시도한다(GARDEN-02). 같은 사용자가 같은 오브젝트를 거의 동시에
+     * 두 번 인증하면 두 트랜잭션이 똑같이 "지금 자랄 수 있다"고 판단할 수 있어, 엔티티를
+     * 불러와 고치고 저장하는 대신 {@code version}이 넘긴 값과 같을 때만 반영되는 조건부
+     * {@code UPDATE} 한 문장으로 시도한다 — 나중 시도는 조용히 0행을 돌려받는다(예외 없음).
+     * 엔티티를 먼저 메모리에서 바꾸고 저장을 시도하는 방식은, 실패한 뒤 그 엔티티가
+     * 여전히 "고쳐진 채로" 영속성 컨텍스트에 남아 있어서 이어지는 조회까지 같이
+     * 실패하게 만든다({@code tryInsertUnlock()}과 달리 이번엔 그 문제를 실제로 겪었다).
+     *
+     * @return 실제로 반영됐으면 {@code 1}, 경합에서 졌으면(버전 불일치) {@code 0}
+     */
+    @Modifying
+    @Query(value = """
+            UPDATE user_garden_objects
+            SET stage = stage + 1, last_grown_at = :now, version = version + 1
+            WHERE user_id = :userId AND garden_object_id = :gardenObjectId AND version = :expectedVersion
+            """, nativeQuery = true)
+    int tryGrow(@Param("userId") Long userId, @Param("gardenObjectId") Long gardenObjectId,
+                @Param("now") LocalDateTime now, @Param("expectedVersion") Long expectedVersion);
+
+    /**
+     * {@code tryGrow()}에서 경합에 진 쪽이 진짜 최신 {@code stage}·{@code lastGrownAt}을
+     * 읽는 데 쓴다. {@link #findByUser_IdAndGardenObject_Id}로 다시 읽으면 같은 트랜잭션
+     * 안에서 이미 한 번 읽은 적 있는 엔티티라 Hibernate 1차 캐시가 그 낡은 인스턴스를
+     * 그대로 돌려준다 — 엔티티가 아닌 원시값 프로젝션으로 우회해야 진짜 DB 값을 본다.
+     */
+    @Query(value = """
+            SELECT stage, last_grown_at AS lastGrownAt
+            FROM user_garden_objects
+            WHERE user_id = :userId AND garden_object_id = :gardenObjectId
+            """, nativeQuery = true)
+    Optional<UserGardenObjectSnapshot> findSnapshot(
+            @Param("userId") Long userId, @Param("gardenObjectId") Long gardenObjectId);
 }

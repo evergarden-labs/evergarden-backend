@@ -12,8 +12,10 @@ import com.evergarden.evergardenbackend.place.client.dto.AreaBasedSyncPage;
 import com.evergarden.evergardenbackend.place.client.dto.DetailCommonItem;
 import com.evergarden.evergardenbackend.place.client.dto.DetailImageItem;
 import com.evergarden.evergardenbackend.place.client.dto.DetailIntroItem;
+import com.evergarden.evergardenbackend.place.client.dto.LocationBasedItem;
 import com.evergarden.evergardenbackend.place.client.dto.RegionCode;
 import com.evergarden.evergardenbackend.place.config.TourApiProperties;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -160,6 +162,44 @@ class TourApiClientTest {
 
         assertThat(images).extracting(DetailImageItem::originimgurl)
                 .containsExactly("http://example.com/1.jpg", "http://example.com/2.jpg");
+    }
+
+    @Test
+    @DisplayName("위치기반 조회는 mapX=경도·mapY=위도·거리순 정렬로 부른다")
+    void 위치기반_조회() {
+        mockServer.expect(requestTo(containsString("/locationBasedList2")))
+                .andExpect(queryParam("mapX", "126.97"))
+                .andExpect(queryParam("mapY", "37.57"))
+                .andExpect(queryParam("radius", "2000"))
+                .andExpect(queryParam("arrange", "S"))
+                .andRespond(withSuccess("""
+                        {"response":{"header":{"resultCode":"0000","resultMsg":"OK"},
+                        "body":{"items":{"item":[
+                            {"contentid":"c1","contenttypeid":"12","title":"가까운 곳",
+                             "lDongRegnCd":"11","lDongSignguCd":"110"},
+                            {"contentid":"c2","contenttypeid":"12","title":"먼 곳",
+                             "lDongRegnCd":"11","lDongSignguCd":"140"}
+                        ]},"numOfRows":2,"pageNo":1,"totalCount":2}}}
+                        """, MediaType.APPLICATION_JSON));
+
+        List<LocationBasedItem> items = client.fetchNearby(new BigDecimal("37.57"), new BigDecimal("126.97"), 2000);
+
+        assertThat(items).hasSize(2);
+        assertThat(items.get(0).lDongSignguCd()).isEqualTo("110");
+    }
+
+    @Test
+    @DisplayName("반경 안에 아무것도 없으면 빈 목록이다")
+    void 위치기반_조회_결과없음() {
+        mockServer.expect(requestTo(containsString("/locationBasedList2")))
+                .andRespond(withSuccess("""
+                        {"response":{"header":{"resultCode":"0000","resultMsg":"OK"},
+                        "body":{"items":{"item":[]},"numOfRows":0,"pageNo":1,"totalCount":0}}}
+                        """, MediaType.APPLICATION_JSON));
+
+        List<LocationBasedItem> items = client.fetchNearby(new BigDecimal("37.57"), new BigDecimal("126.97"), 2000);
+
+        assertThat(items).isEmpty();
     }
 
     /**

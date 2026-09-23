@@ -239,10 +239,12 @@ API는 이를 `deletedShare` 배열로 내려보냅니다.
 ### ADR-018 · 같은 지역 재인증 쿨다운은 7일
 
 **이유** — 같은 지역 재인증으로 식물이 자라므로(GARDEN-02) 상한이 없으면 무한 성장합니다.
-`user_garden_objects.last_grown_at` 기준으로 판정하고,
-다음 인증 가능 시각을 `details.availableAt`으로 내려보냅니다.
+`user_garden_objects.last_grown_at` 기준으로 판정하되, 아직 한 번도 안 자랐으면(`null`)
+`unlocked_at`(해금 시각)부터 잰다 — 안 그러면 해금 직후 바로 재인증했을 때 쿨다운 없이
+곧장 자라버린다. 다음 인증 가능 시각은 에러가 아니라 `VisitReward.nextAvailableAt`
+응답 필드로 내려보낸다(ADR-038 — 쿨다운은 인증 자체를 막지 않아서 에러가 아니다).
 
-**영향** — GARDEN-02 (결과 칸에 반영됨) / `REGION_VISIT_COOLDOWN`
+**영향** — GARDEN-02 (결과 칸에 반영됨) / `REGION_VISIT_COOLDOWN` 코드는 안 씀(ADR-038)
 
 ---
 
