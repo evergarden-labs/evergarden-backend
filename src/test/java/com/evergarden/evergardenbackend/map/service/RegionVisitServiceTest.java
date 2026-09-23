@@ -104,4 +104,42 @@ class RegionVisitServiceTest {
         assertThat(result).hasSize(1);
         assertThat(result.get(0).visited()).isFalse();
     }
+
+    // ── 지역 하나 조회(MAP-03) ─────────────────────────────────
+
+    @Test
+    @DisplayName("SIGUNGU 지역은 자기 코드만으로 상태를 계산한다")
+    void 단건_시군구() {
+        Region seoul = region("11", RegionLevel.SIDO, null);
+        Region jongno = region("110", RegionLevel.SIGUNGU, seoul);
+        LocalDateTime visitedAt = LocalDateTime.of(2026, 1, 1, 10, 0);
+        RegionVisitAggregate jongnoAggregate = aggregate("110", 2, visitedAt);
+        given(regionVisitRepository.aggregateByUser(USER_ID)).willReturn(List.of(jongnoAggregate));
+
+        RegionVisitStatus result = service.getStatus(USER_ID, jongno);
+
+        assertThat(result.visited()).isTrue();
+        assertThat(result.visitCount()).isEqualTo(2);
+        org.mockito.Mockito.verifyNoInteractions(regionRepository);
+    }
+
+    @Test
+    @DisplayName("SIDO 지역은 하위 시군구 방문까지 합산한다 — listMyRegions와 같은 규칙")
+    void 단건_시도_하위시군구_합산() {
+        Region seoul = region("11", RegionLevel.SIDO, null);
+        Region jongno = region("110", RegionLevel.SIGUNGU, seoul);
+        Region jung = region("140", RegionLevel.SIGUNGU, seoul);
+        given(regionRepository.findByParent_Code("11")).willReturn(List.of(jongno, jung));
+        LocalDateTime jongnoAt = LocalDateTime.of(2026, 1, 1, 10, 0);
+        LocalDateTime jungAt = LocalDateTime.of(2026, 1, 5, 10, 0);
+        RegionVisitAggregate jongnoAggregate = aggregate("110", 1, jongnoAt);
+        RegionVisitAggregate jungAggregate = aggregate("140", 3, jungAt);
+        given(regionVisitRepository.aggregateByUser(USER_ID)).willReturn(List.of(jongnoAggregate, jungAggregate));
+
+        RegionVisitStatus result = service.getStatus(USER_ID, seoul);
+
+        assertThat(result.visited()).isTrue();
+        assertThat(result.visitCount()).isEqualTo(4);
+        assertThat(result.lastVisitedAt()).isEqualTo(jungAt);
+    }
 }
