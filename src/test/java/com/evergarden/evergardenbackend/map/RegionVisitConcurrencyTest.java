@@ -1,0 +1,124 @@
+package com.evergarden.evergardenbackend.map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.BDDMockito.given;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+
+import com.evergarden.evergardenbackend.garden.entity.GardenObject;
+import com.evergarden.evergardenbackend.garden.entity.GardenObjectType;
+import com.evergarden.evergardenbackend.garden.repository.GardenObjectRepository;
+import com.evergarden.evergardenbackend.garden.repository.UserGardenObjectRepository;
+import com.evergarden.evergardenbackend.global.security.JwtTokenProvider;
+import com.evergarden.evergardenbackend.global.security.Role;
+import com.evergarden.evergardenbackend.place.client.TourApiClient;
+import com.evergarden.evergardenbackend.place.client.dto.LocationBasedItem;
+import com.evergarden.evergardenbackend.place.entity.Region;
+import com.evergarden.evergardenbackend.place.entity.RegionLevel;
+import com.evergarden.evergardenbackend.place.repository.RegionRepository;
+import com.evergarden.evergardenbackend.support.IntegrationTest;
+import com.evergarden.evergardenbackend.user.entity.User;
+import com.evergarden.evergardenbackend.user.repository.UserRepository;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+
+/**
+ * 처음 해금(ADR-006)이 진짜 동시 요청에서도 DB 유니크 제약으로 막히는지 확인한다.
+ * {@code CommunityConcurrencyTest}와 같은 이유로 {@code @Transactional}을 클래스에
+ * 안 건다 — 걸면 모든 스레드가 테스트 스레드의 트랜잭션에 묶여 경합 자체가 안 생긴다.
+ */
+@AutoConfigureMockMvc
+class RegionVisitConcurrencyTest extends IntegrationTest {
+
+    private static final int THREADS = 10;
+
+    @Autowired MockMvc mvc;
+    @Autowired JsonMapper jsonMapper;
+    @Autowired JwtTokenProvider tokenProvider;
+    @Autowired UserRepository userRepository;
+    @Autowired RegionRepository regionRepository;
+    @Autowired GardenObjectRepository gardenObjectRepository;
+    @Autowired UserGardenObjectRepository userGardenObjectRepository;
+
+    @MockitoBean TourApiClient tourApiClient;
+
+    @Test
+    @DisplayName("같은 사용자가 처음 방문하는 지역을 동시에 여러 번 인증해도 해금은 한 번만 된다(ADR-006)")
+    void 동시_처음해금_하나만_성공() throws Exception {
+        User user = userRepository.save(User.builder().nickname("동시성해금테스터").build());
+        String accessToken = tokenProvider.issueAccessToken(user.getId(), Role.USER);
+
+        Region seoul = regionRepository.save(Region.builder()
+                .code("11동시").level(RegionLevel.SIDO).name("서울특별시")
+                .centerLat(new BigDecimal("37.5665")).centerLng(new BigDecimal("126.9780"))
+                .syncedAt(LocalDateTime.now()).build());
+        Region jongno = regionRepository.save(Region.builder()
+                .code("110동시").parent(seoul).level(RegionLevel.SIGUNGU).name("종로구")
+                .centerLat(new BigDecimal("37.5729")).centerLng(new BigDecimal("126.9794"))
+                .syncedAt(LocalDateTime.now()).build());
+        GardenObject tree = gardenObjectRepository.save(GardenObject.builder()
+                .region(jongno).name("종로 은행나무").type(GardenObjectType.PLANT).maxStage((short) 3).build());
+
+        given(tourApiClient.fetchNearby(new BigDecimal("37.5729"), new BigDecimal("126.9794"), 2_000))
+                .willReturn(List.of(new LocationBasedItem("c1", "12", "경복궁", "11동시", "110동시")));
+
+        List<String> rewardStatuses = fireConcurrently(() -> {
+            MvcResult result = mvc.perform(post("/region-visits")
+                            .header("Authorization", "Bearer " + accessToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"lat":37.5729,"lng":126.9794,"accuracyMeters":10}
+                                    """))
+                    .andReturn();
+            assertThat(result.getResponse().getStatus()).isEqualTo(200);
+            JsonNode root = jsonMapper.readTree(result.getResponse().getContentAsString());
+            return root.at("/data/rewardStatus").asText();
+        });
+
+        assertThat(rewardStatuses).filteredOn("UNLOCKED"::equals).hasSize(1);
+        assertThat(userGardenObjectRepository.findByUser_IdAndGardenObject_Id(user.getId(), tree.getId()))
+                .isPresent();
+    }
+
+    private List<String> fireConcurrently(Callable<String> request) throws Exception {
+        ExecutorService executor = Executors.newFixedThreadPool(THREADS);
+        CountDownLatch ready = new CountDownLatch(THREADS);
+        CountDownLatch start = new CountDownLatch(1);
+        List<Future<String>> futures = new ArrayList<>();
+
+        for (int i = 0; i < THREADS; i++) {
+            futures.add(executor.submit(() -> {
+                ready.countDown();
+                start.await();
+                return request.call();
+            }));
+        }
+
+        ready.await();
+        start.countDown();
+
+        List<String> results = new ArrayList<>();
+        for (Future<String> future : futures) {
+            results.add(future.get(10, TimeUnit.SECONDS));
+        }
+        executor.shutdown();
+        return results;
+    }
+}
