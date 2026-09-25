@@ -140,7 +140,7 @@ class SecurityConfigTest {
         @DisplayName("리프레시 토큰으로는 API를 부를 수 없다 — 7일짜리로 30분 만료를 우회하는 것을 막는다")
         void refreshTokenRejected() throws Exception {
             mvc.perform(get("/me").header("Authorization",
-                            "Bearer " + tokenProvider.issueRefreshToken(1L, Role.USER)))
+                            "Bearer " + tokenProvider.issueRefreshToken(1L, Role.USER).token()))
                     .andExpect(status().isUnauthorized())
                     .andExpect(jsonPath("$.error.code").value("TOKEN_INVALID"));
         }
