@@ -85,13 +85,15 @@ jwt:
 # 소셜 로그인 (ADR-010)
 # 앱이 SDK로 받은 액세스 토큰을 서버가 제공자 API로 검증한다.
 # 서버가 로그인 페이지로 리다이렉트하지 않으므로 redirect-uri·client-secret이 필요 없다.
+#
+# 구글·카카오는 프로필(userinfo) 엔드포인트를 따로 부르지 않는다. 토큰 검증 엔드포인트의
+# 응답에 이미 우리 앱이 발급한 토큰인지(aud·app_id)와 사용자 식별자(sub·id)가 같이 들어 있어,
+# 한 번 더 부를 이유가 없다 — 어차피 닉네임 등 프로필 정보는 소셜 계정에서 가져오지 않는다(ADR-050).
 oauth:
   google:
-    user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo
     token-info-uri: https://oauth2.googleapis.com/tokeninfo
     client-id: ${GOOGLE_CLIENT_ID}      # 토큰의 aud가 우리 앱인지 확인하는 데 쓴다
   kakao:
-    user-info-uri: https://kapi.kakao.com/v2/user/me
     token-info-uri: https://kapi.kakao.com/v1/user/access_token_info
     app-id: ${KAKAO_APP_ID}             # 토큰의 app_id가 우리 앱인지 확인하는 데 쓴다
   naver:
