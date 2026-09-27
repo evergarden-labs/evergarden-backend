@@ -41,6 +41,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 public class AuthService {
 
+    /** 닉네임 유니크 제약 경합 시 재시도 횟수(ADR-006). 연속으로 겹칠 확률은 극히 낮다. */
+    private static final int MAX_NICKNAME_RETRIES = 5;
+
     private final SocialAccountRepository socialAccountRepository;
     private final UserRepository userRepository;
     private final SanctionRepository sanctionRepository;
@@ -198,15 +201,14 @@ public class AuthService {
     }
 
     /**
-     * 신규 회원을 만든다. {@code User} 저장 직후 {@code SocialAccount} 유니크 제약
-     * ({@code provider}, {@code providerUserId})에서 동시 가입 경합에 걸리면(ADR-006),
-     * 여기서 잡은 예외가 {@link BusinessException}으로 바뀌어 트랜잭션 밖까지 전파되고
-     * 스프링이 트랜잭션 전체를 롤백한다 — 방금 만든 {@code User}도 함께 사라져 고아 행이
-     * 남지 않는다.
+     * 신규 회원을 만든다. 두 유니크 제약(닉네임, {@code (provider, providerUserId)}) 모두
+     * 경합에 대비한다(ADR-006). 닉네임은 그 자리에서 새 값으로 다시 시도하면 되지만,
+     * 소셜 계정 연결은 재시도해도 소용없다 — 같은 소셜 계정이라 다른 값을 시도할 수 없다.
+     * 그 경우는 예외를 {@link BusinessException}으로 바꿔 트랜잭션 전체를 롤백시킨다 —
+     * 이미 저장된 {@code User}도 함께 사라져 고아 행이 남지 않는다.
      */
     private User registerNewUser(SocialProvider provider, String providerUserId) {
-        User user = User.builder().nickname(nicknameGenerator.generate()).build();
-        userRepository.save(user);
+        User user = saveUserWithUniqueNickname();
 
         SocialAccount account = SocialAccount.builder()
                 .user(user).provider(provider).providerUserId(providerUserId).build();
@@ -216,6 +218,23 @@ public class AuthService {
             throw new BusinessException(ErrorCode.SOCIAL_ACCOUNT_ALREADY_LINKED);
         }
         return user;
+    }
+
+    /**
+     * {@code NicknameGenerator}가 저장 전에 미리 중복을 확인해도, 그 사이 다른 요청이
+     * 같은 값을 먼저 저장하면 유니크 제약(ADR-025)에 걸린다 — 확인과 저장 사이의
+     * 경합이라 미리 보는 것만으론 못 막는다(ADR-006). 저장 자체를 재시도해서 막는다.
+     */
+    private User saveUserWithUniqueNickname() {
+        for (int attempt = 0; attempt < MAX_NICKNAME_RETRIES; attempt++) {
+            User user = User.builder().nickname(nicknameGenerator.generate()).build();
+            try {
+                return userRepository.saveAndFlush(user);
+            } catch (DataIntegrityViolationException e) {
+                // 경합 — 다른 닉네임으로 다시 시도한다
+            }
+        }
+        throw new BusinessException(ErrorCode.INTERNAL_ERROR);
     }
 
     private void checkLoginable(User user) {
