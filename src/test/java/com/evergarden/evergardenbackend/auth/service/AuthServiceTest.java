@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.evergarden.evergardenbackend.archive.entity.Archive;
@@ -69,6 +70,7 @@ class AuthServiceTest {
         given(googleClient.provider()).willReturn(SocialProvider.GOOGLE);
         given(archiveCollaboratorRepository.findByUser_IdAndStatus(anyLong(), eq(CollaboratorStatus.JOINED)))
                 .willReturn(List.of());
+        given(userRepository.saveAndFlush(any(User.class))).willAnswer(invocation -> invocation.getArgument(0));
         authService = new AuthService(
                 socialAccountRepository, userRepository, sanctionRepository,
                 archiveCollaboratorRepository, archiveCollaborationService, tokenProvider,
@@ -199,6 +201,43 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.loginWithSocial("google", "token"))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.SOCIAL_ACCOUNT_ALREADY_LINKED);
+    }
+
+    @Test
+    @DisplayName("닉네임이 경합으로 겹치면 다른 닉네임으로 재시도해 가입에 성공한다(ADR-006)")
+    void 신규_가입_닉네임_경합_재시도() {
+        given(googleClient.verify("token")).willReturn("uid");
+        given(socialAccountRepository.findByProviderAndProviderUserId(SocialProvider.GOOGLE, "uid"))
+                .willReturn(Optional.empty());
+        given(nicknameGenerator.generate()).willReturn("여행자0001", "여행자0002");
+        given(userRepository.saveAndFlush(any(User.class)))
+                .willThrow(new DataIntegrityViolationException("nickname unique violation"))
+                .willAnswer(invocation -> invocation.getArgument(0));
+        given(tokenProvider.issueAccessToken(any(), eq(Role.USER))).willReturn("access");
+        given(tokenProvider.issueRefreshToken(any(), eq(Role.USER)))
+                .willReturn(new IssuedRefreshToken("refresh", "jti-1"));
+
+        AuthResult result = authService.loginWithSocial("google", "token");
+
+        assertThat(result.isNewUser()).isTrue();
+        verify(nicknameGenerator, times(2)).generate();
+        verify(userRepository, times(2)).saveAndFlush(any(User.class));
+    }
+
+    @Test
+    @DisplayName("닉네임 경합이 재시도 한도를 넘으면 INTERNAL_ERROR")
+    void 신규_가입_닉네임_경합_한도초과() {
+        given(googleClient.verify("token")).willReturn("uid");
+        given(socialAccountRepository.findByProviderAndProviderUserId(SocialProvider.GOOGLE, "uid"))
+                .willReturn(Optional.empty());
+        given(nicknameGenerator.generate()).willReturn("여행자0001");
+        given(userRepository.saveAndFlush(any(User.class)))
+                .willThrow(new DataIntegrityViolationException("nickname unique violation"));
+
+        assertThatThrownBy(() -> authService.loginWithSocial("google", "token"))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INTERNAL_ERROR);
+        verify(socialAccountRepository, never()).saveAndFlush(any());
     }
 
     @Test
