@@ -1,6 +1,7 @@
 package com.evergarden.evergardenbackend.auth;
 
 import static org.mockito.BDDMockito.given;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -130,5 +131,49 @@ class AuthIntegrationTest extends IntegrationTest {
                         .content("{\"refreshToken\":\"" + firstRefreshToken + "\"}"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("REFRESH_TOKEN_EXPIRED"));
+    }
+
+    @Test
+    @DisplayName("탈퇴 → 같은 소셜 계정으로 로그인하면 USER_WITHDRAWN → 복구하면 다시 로그인된다")
+    void 탈퇴_후_복구_흐름() throws Exception {
+        given(googleAuthClient.verify("sdk-token")).willReturn("google-uid-4");
+
+        MvcResult loginResult = mvc.perform(post("/auth/social/google")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"socialAccessToken":"sdk-token"}
+                                """))
+                .andExpect(status().isOk())
+                .andReturn();
+        String accessToken = jsonMapper.readTree(loginResult.getResponse().getContentAsString())
+                .path("data").path("accessToken").asText();
+
+        mvc.perform(delete("/users/me").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk());
+
+        mvc.perform(post("/auth/social/google")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"socialAccessToken":"sdk-token"}
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("USER_WITHDRAWN"))
+                .andExpect(jsonPath("$.error.details.restorableUntil").exists());
+
+        mvc.perform(post("/auth/restore/google")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"socialAccessToken":"sdk-token"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.isNewUser").value(false));
+
+        mvc.perform(post("/auth/social/google")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"socialAccessToken":"sdk-token"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.isNewUser").value(false));
     }
 }
