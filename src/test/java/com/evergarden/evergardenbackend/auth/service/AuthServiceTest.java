@@ -207,6 +207,73 @@ class AuthServiceTest {
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_REQUEST);
     }
 
+    // ── 계정 복구 ────────────────────────────────────────────
+
+    @Test
+    @DisplayName("유예 안인 탈퇴 계정이면 복구하고 새 토큰을 발급한다(AUTH-07)")
+    void 계정_복구_성공() {
+        User user = existingUser();
+        user.withdraw(LocalDateTime.now().minusDays(5));
+        SocialAccount account = SocialAccount.builder()
+                .user(user).provider(SocialProvider.GOOGLE).providerUserId("uid").build();
+        given(googleClient.verify("token")).willReturn("uid");
+        given(socialAccountRepository.findByProviderAndProviderUserId(SocialProvider.GOOGLE, "uid"))
+                .willReturn(Optional.of(account));
+        given(tokenProvider.issueAccessToken(1L, Role.USER)).willReturn("access");
+        given(tokenProvider.issueRefreshToken(1L, Role.USER))
+                .willReturn(new IssuedRefreshToken("refresh", "jti-1"));
+
+        AuthResult result = authService.restoreAccount("google", "token");
+
+        assertThat(user.getStatus().name()).isEqualTo("ACTIVE");
+        assertThat(user.getWithdrawnAt()).isNull();
+        assertThat(result.isNewUser()).isFalse();
+        assertThat(result.accessToken()).isEqualTo("access");
+    }
+
+    @Test
+    @DisplayName("그 소셜 계정으로 탈퇴한 기록이 없으면 USER_NOT_FOUND")
+    void 계정_복구_계정없음() {
+        given(googleClient.verify("token")).willReturn("uid");
+        given(socialAccountRepository.findByProviderAndProviderUserId(SocialProvider.GOOGLE, "uid"))
+                .willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.restoreAccount("google", "token"))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.USER_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("탈퇴 상태가 아닌 계정을 복구하려 하면 INVALID_REQUEST")
+    void 계정_복구_탈퇴상태아님() {
+        User user = existingUser();
+        SocialAccount account = SocialAccount.builder()
+                .user(user).provider(SocialProvider.GOOGLE).providerUserId("uid").build();
+        given(googleClient.verify("token")).willReturn("uid");
+        given(socialAccountRepository.findByProviderAndProviderUserId(SocialProvider.GOOGLE, "uid"))
+                .willReturn(Optional.of(account));
+
+        assertThatThrownBy(() -> authService.restoreAccount("google", "token"))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_REQUEST);
+    }
+
+    @Test
+    @DisplayName("복구 유예가 지났으면 RESTORE_PERIOD_EXPIRED")
+    void 계정_복구_유예만료() {
+        User user = existingUser();
+        user.withdraw(LocalDateTime.now().minusDays(40));
+        SocialAccount account = SocialAccount.builder()
+                .user(user).provider(SocialProvider.GOOGLE).providerUserId("uid").build();
+        given(googleClient.verify("token")).willReturn("uid");
+        given(socialAccountRepository.findByProviderAndProviderUserId(SocialProvider.GOOGLE, "uid"))
+                .willReturn(Optional.of(account));
+
+        assertThatThrownBy(() -> authService.restoreAccount("google", "token"))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.RESTORE_PERIOD_EXPIRED);
+    }
+
     // ── 토큰 재발급 ──────────────────────────────────────────
 
     @Test
