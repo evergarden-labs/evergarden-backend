@@ -47,6 +47,18 @@ class AuthIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("위조·형식이 잘못된 리프레시 토큰은 500이 아니라 401 TOKEN_INVALID다")
+    void 재발급_위조된_토큰은_401() throws Exception {
+        mvc.perform(post("/auth/token/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"refreshToken":"not-a-real-jwt-at-all"}
+                                """))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("TOKEN_INVALID"));
+    }
+
+    @Test
     @DisplayName("로그인 → 로그아웃 → 그 리프레시 토큰으로 재발급 시도하면 실패한다")
     void 로그인_로그아웃_흐름() throws Exception {
         given(googleAuthClient.verify("sdk-token")).willReturn("google-uid-1");
