@@ -10,6 +10,13 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.evergarden.evergardenbackend.archive.entity.Archive;
+import com.evergarden.evergardenbackend.archive.entity.ArchiveCollaborator;
+import com.evergarden.evergardenbackend.archive.entity.ArchiveTheme;
+import com.evergarden.evergardenbackend.archive.entity.CollaborationStatus;
+import com.evergarden.evergardenbackend.archive.entity.CollaboratorStatus;
+import com.evergarden.evergardenbackend.archive.repository.ArchiveCollaboratorRepository;
+import com.evergarden.evergardenbackend.archive.service.ArchiveCollaborationService;
 import com.evergarden.evergardenbackend.auth.client.SocialAuthClient;
 import com.evergarden.evergardenbackend.auth.dto.AuthResult;
 import com.evergarden.evergardenbackend.auth.dto.TokenPair;
@@ -46,6 +53,8 @@ class AuthServiceTest {
     private final SocialAccountRepository socialAccountRepository = mock(SocialAccountRepository.class);
     private final UserRepository userRepository = mock(UserRepository.class);
     private final SanctionRepository sanctionRepository = mock(SanctionRepository.class);
+    private final ArchiveCollaboratorRepository archiveCollaboratorRepository = mock(ArchiveCollaboratorRepository.class);
+    private final ArchiveCollaborationService archiveCollaborationService = mock(ArchiveCollaborationService.class);
     private final JwtTokenProvider tokenProvider = mock(JwtTokenProvider.class);
     private final RefreshTokenStore refreshTokenStore = mock(RefreshTokenStore.class);
     private final NicknameGenerator nicknameGenerator = mock(NicknameGenerator.class);
@@ -56,8 +65,11 @@ class AuthServiceTest {
     @BeforeEach
     void setUp() {
         given(googleClient.provider()).willReturn(SocialProvider.GOOGLE);
+        given(archiveCollaboratorRepository.findByUser_IdAndStatus(anyLong(), eq(CollaboratorStatus.JOINED)))
+                .willReturn(List.of());
         authService = new AuthService(
-                socialAccountRepository, userRepository, sanctionRepository, tokenProvider,
+                socialAccountRepository, userRepository, sanctionRepository,
+                archiveCollaboratorRepository, archiveCollaborationService, tokenProvider,
                 refreshTokenStore, nicknameGenerator, List.of(googleClient), RESTORE_GRACE_DAYS);
     }
 
@@ -257,5 +269,66 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.withdraw(99L))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.USER_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("탈퇴하면 공동 편집이 열려 있는 소유 아카이브는 종료된다(ADR-054)")
+    void 탈퇴_소유_아카이브_공동편집_종료() {
+        User user = existingUser();
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+
+        Archive archive = Archive.builder().owner(user).title("제목").theme(
+                ArchiveTheme.BOOK).build();
+        archive.openCollaboration();
+        ReflectionTestUtils.setField(archive, "id", 10L);
+        ArchiveCollaborator ownerRow = ArchiveCollaborator.owner(archive, user, LocalDateTime.now());
+        given(archiveCollaboratorRepository.findByUser_IdAndStatus(1L, CollaboratorStatus.JOINED))
+                .willReturn(List.of(ownerRow));
+
+        authService.withdraw(1L);
+
+        verify(archiveCollaborationService).close(1L, 10L);
+        verify(archiveCollaborationService, never()).leave(any(), any());
+    }
+
+    @Test
+    @DisplayName("탈퇴해도 공동 편집이 없는(NONE) 소유 아카이브는 손대지 않는다")
+    void 탈퇴_소유_아카이브_공동편집_없으면_그대로() {
+        User user = existingUser();
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+
+        Archive archive = Archive.builder().owner(user).title("제목").theme(
+                ArchiveTheme.BOOK).build();
+        assertThat(archive.getCollaborationStatus()).isEqualTo(CollaborationStatus.NONE);
+        ReflectionTestUtils.setField(archive, "id", 11L);
+        ArchiveCollaborator ownerRow = ArchiveCollaborator.owner(archive, user, LocalDateTime.now());
+        given(archiveCollaboratorRepository.findByUser_IdAndStatus(1L, CollaboratorStatus.JOINED))
+                .willReturn(List.of(ownerRow));
+
+        authService.withdraw(1L);
+
+        verify(archiveCollaborationService, never()).close(any(), any());
+    }
+
+    @Test
+    @DisplayName("탈퇴하면 참여 중이던 아카이브에서는 나간 것으로 처리된다(ADR-054)")
+    void 탈퇴_참여_아카이브_나가기() {
+        User user = existingUser();
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+
+        User owner = User.builder().nickname("소유자").build();
+        ReflectionTestUtils.setField(owner, "id", 2L);
+        Archive archive = Archive.builder().owner(owner).title("제목").theme(
+                ArchiveTheme.BOOK).build();
+        ReflectionTestUtils.setField(archive, "id", 12L);
+        ArchiveCollaborator editorRow = ArchiveCollaborator.invite(archive, user, LocalDateTime.now());
+        editorRow.accept(LocalDateTime.now());
+        given(archiveCollaboratorRepository.findByUser_IdAndStatus(1L, CollaboratorStatus.JOINED))
+                .willReturn(List.of(editorRow));
+
+        authService.withdraw(1L);
+
+        verify(archiveCollaborationService).leave(1L, 12L);
+        verify(archiveCollaborationService, never()).close(any(), any());
     }
 }
