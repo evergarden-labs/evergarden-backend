@@ -29,7 +29,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * 사유를 요청 속성에 적어둔다. 판단은 뒤쪽 인가 단계가 한다 —
  *
  * <ul>
- *   <li>인증이 필요 없는 경로({@code /auth/restore} 등)면 <b>그대로 통과</b>한다.
+ *   <li>인증이 필요 없는 경로({@code /auth/restore/{provider}} 등)면 <b>그대로 통과</b>한다.
  *       탈퇴한 회원이 복구를 부를 수 있어야 하므로 이 동작이 필요하다</li>
  *   <li>인증이 필요한 경로면 {@link JwtAuthenticationEntryPoint}가 적어둔 사유로 응답한다</li>
  * </ul>
