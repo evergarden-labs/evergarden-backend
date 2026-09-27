@@ -36,6 +36,8 @@ import com.evergarden.evergardenbackend.report.repository.SanctionRepository;
 import com.evergarden.evergardenbackend.user.entity.User;
 import com.evergarden.evergardenbackend.user.repository.UserRepository;
 import com.evergarden.evergardenbackend.user.service.NicknameGenerator;
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.MalformedJwtException;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -45,7 +47,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
-/** AUTH-01~05를 다룬다(AUTH-07 {@code restoreAccount}는 명세 확인 후 별도로 붙인다). */
+/** AUTH-01~07 — 소셜 로그인·가입·복구·재발급·로그아웃·탈퇴를 다룬다. */
 class AuthServiceTest {
 
     private static final int RESTORE_GRACE_DAYS = 30;
@@ -303,6 +305,28 @@ class AuthServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.REFRESH_TOKEN_EXPIRED);
         verify(tokenProvider, never()).issueAccessToken(anyLong(), any());
+    }
+
+    @Test
+    @DisplayName("서명이 틀리거나 형식이 이상한 리프레시 토큰이면 TOKEN_INVALID — 500이 아니다")
+    void 재발급_실패_위조된_토큰() {
+        given(tokenProvider.parseRefreshToken("garbage"))
+                .willThrow(new MalformedJwtException("malformed"));
+
+        assertThatThrownBy(() -> authService.refreshToken("garbage"))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.TOKEN_INVALID);
+    }
+
+    @Test
+    @DisplayName("만료된 리프레시 토큰이면 REFRESH_TOKEN_EXPIRED — 500이 아니다")
+    void 재발급_실패_만료된_토큰() {
+        given(tokenProvider.parseRefreshToken("expired-token"))
+                .willThrow(new ExpiredJwtException(null, null, "expired"));
+
+        assertThatThrownBy(() -> authService.refreshToken("expired-token"))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.REFRESH_TOKEN_EXPIRED);
     }
 
     // ── 로그아웃·탈퇴 ────────────────────────────────────────
