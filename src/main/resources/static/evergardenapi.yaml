@@ -251,7 +251,7 @@ paths:
           description: |
             `USER_BLOCKED` — 차단된 회원. `details.reason`·`details.blockedAt`으로 사유 안내(AUTH-06)
             `USER_WITHDRAWN` — 탈퇴한 회원. 유예 중이면 `details.restorableUntil`이 담기고,
-            앱은 `POST /auth/restore`로 복구를 권합니다(ADR-054)
+            앱은 `POST /auth/restore/{provider}`로 복구를 권합니다(ADR-054)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -262,7 +262,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
-  /auth/restore:
+  /auth/restore/{provider}:
     post:
       tags: [인증]
       operationId: restoreAccount
