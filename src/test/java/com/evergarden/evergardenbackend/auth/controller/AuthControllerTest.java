@@ -102,6 +102,49 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.error.code").value("SOCIAL_AUTH_FAILED"));
     }
 
+    // ── 계정 복구 (security: []) ──────────────────────────────
+
+    @Test
+    @DisplayName("토큰 없이도 호출된다 — security: []")
+    void 계정복구_비로그인_허용() throws Exception {
+        given(authService.restoreAccount(eq("google"), eq("sdk-token")))
+                .willReturn(new AuthResult("access", "refresh", false, true));
+
+        mvc.perform(post("/auth/restore/google")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"socialAccessToken":"sdk-token"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.isNewUser").value(false))
+                .andExpect(jsonPath("$.data.accessToken").value("access"));
+    }
+
+    @Test
+    @DisplayName("socialAccessToken이 비어 있으면 INVALID_REQUEST")
+    void 계정복구_토큰_비어있음() throws Exception {
+        mvc.perform(post("/auth/restore/google")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    @DisplayName("서비스가 던진 RESTORE_PERIOD_EXPIRED가 그대로 전달된다")
+    void 계정복구_유예만료() throws Exception {
+        given(authService.restoreAccount(eq("google"), eq("sdk-token")))
+                .willThrow(new BusinessException(ErrorCode.RESTORE_PERIOD_EXPIRED));
+
+        mvc.perform(post("/auth/restore/google")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"socialAccessToken":"sdk-token"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("RESTORE_PERIOD_EXPIRED"));
+    }
+
     // ── 토큰 재발급 (security: []) ────────────────────────────
 
     @Test
