@@ -90,6 +90,28 @@ public class AuthService {
         return issueAuthResult(user, isNewUser);
     }
 
+    /**
+     * 탈퇴한 계정을 복구한다(AUTH-07). 로그인이 막혀 있어 액세스 토큰을 못 쓰므로,
+     * 탈퇴할 때 연결돼 있던 소셜 계정의 토큰으로 본인을 확인한다(ADR-054).
+     */
+    public AuthResult restoreAccount(String providerRaw, String socialAccessToken) {
+        SocialProvider provider = SocialProvider.from(providerRaw);
+        String providerUserId = clientFor(provider).verify(socialAccessToken);
+
+        SocialAccount account = socialAccountRepository.findByProviderAndProviderUserId(provider, providerUserId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        User user = account.getUser();
+
+        if (user.getStatus() != UserStatus.WITHDRAWN) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST);
+        }
+        if (!user.isRestorableAt(LocalDateTime.now(), restoreGraceDays)) {
+            throw new BusinessException(ErrorCode.RESTORE_PERIOD_EXPIRED);
+        }
+        user.restore();
+        return issueAuthResult(user, false);
+    }
+
     /** 액세스 토큰 재발급(AUTH-05). 리프레시 토큰도 함께 회전한다(ADR-055). */
     public TokenPair refreshToken(String refreshToken) {
         RefreshTokenPrincipal parsed = tokenProvider.parseRefreshToken(refreshToken);
