@@ -110,7 +110,7 @@
 | `TOKEN_EXPIRED` | 액세스 토큰 만료 | AUTH-05 | 클라이언트가 재발급을 시도해야 함 |
 | `TOKEN_INVALID` | 서명 불일치, 변조, 형식 오류 | COMMON-02 | 재발급 대상이 아님 |
 | `REFRESH_TOKEN_EXPIRED` | 리프레시 토큰 만료·폐기 | AUTH-05 | 재로그인 필요 |
-| `SOCIAL_AUTH_FAILED` | 소셜 제공자 인증에 실패 | AUTH-01, AUTH-02 | `details.provider` |
+| `SOCIAL_AUTH_FAILED` | 소셜 제공자 인증에 실패 | AUTH-01, AUTH-02 | |
 | `ADMIN_CREDENTIALS_INVALID` | 관리자 아이디·비밀번호 불일치 | ADMIN-01 | 어느 쪽이 틀렸는지 구분하지 않음 |
 
 ---

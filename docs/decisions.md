@@ -786,7 +786,7 @@ ffmpeg으로 뽑는 방식으로 갑니다. 그때도 앱 코드는 그대로 �
 - 참여 중이던 아카이브에서는 `LEFT` 처리됩니다
 
 **30일 안**
-- `POST /auth/restore`로 되돌릴 수 있습니다
+- `POST /auth/restore/{provider}`로 되돌릴 수 있습니다
 - 닉네임이 계속 점유되고 소셜 계정 연결도 남습니다 — 같은 계정으로 **새로 가입할 수 없고 복구만 됩니다**
 - 종료된 공동 편집은 복구해도 다시 열지 않습니다. 참여자가 이미 복제해 갔을 수 있어 되돌리면 상태가 엉킵니다
 
@@ -804,7 +804,7 @@ ffmpeg으로 뽑는 방식으로 갑니다. 그때도 앱 코드는 그대로 �
 **남은 것** — 법령상 보관 의무가 있는 정보가 무엇이고 익명화 후 무엇을 남겨도 되는지는
 법무 검토가 필요합니다.
 
-**영향** — AUTH-04·AUTH-07 신설 / `POST /auth/restore` / `RESTORE_PERIOD_EXPIRED` 코드
+**영향** — AUTH-04·AUTH-07 신설 / `POST /auth/restore/{provider}` / `RESTORE_PERIOD_EXPIRED` 코드
 
 ---
 
@@ -1012,6 +1012,32 @@ ADR-011이 "커서 방식을 쓴다"까지만 정하고 토큰 안에 뭘 담을
 **영향** — PLAN-07 / `places` 테이블에 `image_urls`·`detail_synced_at` 컬럼 추가
 (마이그레이션 V5) / `TourApiClient`의 `fetchDetailCommon`·`fetchDetailIntro`·
 `fetchDetailImages` / 새 서비스 `PlaceDetailFetchService`
+
+---
+
+### ADR-062 · 구글·카카오 소셜 로그인 검증은 토큰 검증 엔드포인트 하나로 끝낸다
+
+ADR-010에 따라 서버는 앱이 보낸 소셜 액세스 토큰을 제공자 API로 검증하는데, 구글·카카오는
+프로필(userinfo) 엔드포인트를 따로 부르지 않습니다. 토큰 검증 엔드포인트 하나로 "우리 앱이
+발급한 토큰인지"와 "누구의 토큰인지"를 한 번에 확인합니다.
+
+| 제공자 | 부르는 엔드포인트 | 응답에서 확인하는 값 |
+|---|---|---|
+| 구글 | `GET /tokeninfo?access_token=...` | `aud`(우리 client-id와 일치) → `sub`(사용자 식별자) |
+| 카카오 | `GET /v1/user/access_token_info` (`Authorization: Bearer`) | `app_id`(우리 app-id와 일치) → `id`(사용자 식별자) |
+| 네이버 | `GET /v1/nid/me` (검증 전용 엔드포인트가 없음) | `resultcode == "00"`이면 유효 → `response.id`(사용자 식별자) |
+
+**이유** — 구글의 `tokeninfo`, 카카오의 `access_token_info` 응답에 이미 검증에 필요한 두 값
+(발급 대상·사용자 식별자)이 같이 들어 있습니다. 프로필 엔드포인트(구글 `userinfo`, 카카오
+`user/me`)를 추가로 부르면 외부 API 왕복이 한 번 더 늘 뿐이고, 거기서 얻는 닉네임·이메일
+같은 프로필 정보는 애초에 쓰지 않습니다 — 닉네임은 서버가 "여행자####" 형태로 직접 만들거나
+(ADR-050) 사용자가 온보딩에서 직접 정합니다.
+
+네이버는 검증 전용 엔드포인트가 없어 프로필 조회 하나가 검증과 식별자 조회를 같이 합니다
+(제한 사항, 기존 설정 파일 주석에 이미 명시돼 있던 내용).
+
+**영향** — AUTH-01·AUTH-02 / `application.yml`의 `oauth.google.user-info-uri`·
+`oauth.kakao.user-info-uri` 제거(`token-info-uri`만 유지) / `SocialAuthClient` 구현체
 
 ---
 

@@ -2,6 +2,7 @@ package com.evergarden.evergardenbackend.archive.repository;
 
 import com.evergarden.evergardenbackend.archive.entity.Archive;
 import com.evergarden.evergardenbackend.archive.entity.ArchiveCollaborator;
+import com.evergarden.evergardenbackend.archive.entity.CollaboratorStatus;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -13,6 +14,9 @@ public interface ArchiveCollaboratorRepository extends JpaRepository<ArchiveColl
     List<ArchiveCollaborator> findByArchive(Archive archive);
 
     Optional<ArchiveCollaborator> findByArchiveAndUser_Id(Archive archive, Long userId);
+
+    /** 지금 관여 중인(참여든 소유든) 모든 아카이브. 탈퇴 시 공동 편집 정리에 쓴다(ADR-054). */
+    List<ArchiveCollaborator> findByUser_IdAndStatus(Long userId, CollaboratorStatus status);
 
     Optional<ArchiveCollaborator> findByArchive_IdAndUser_Id(Long archiveId, Long userId);
 

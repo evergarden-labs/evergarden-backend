@@ -30,6 +30,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Profile;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -41,8 +42,14 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 시큐리티 필터 단계의 거절이 {@code GlobalExceptionHandler}와 <b>같은 봉투</b>로
  * 나가는지 확인한다. 필터는 {@code DispatcherServlet} 앞에 있어 핸들러를 거치지 않는다.
+ *
+ * <p>{@code ProbeController}가 실제 명세 경로({@code /auth/social/google}·{@code /auth/restore/google})를
+ * 그대로 흉내 낸다. 이 클래스는 {@code @RestController}라 클래스패스 스캔에 걸려, 다른
+ * {@code @SpringBootTest}(전체 컨텍스트)가 뜰 때도 같이 올라와 진짜 컨트롤러와 경로가
+ * 겹칠 수 있다({@code AuthController}가 생기면서 실제로 겪은 문제) — {@code security-probe}
+ * 프로파일에서만 뜨게 가둬 다른 테스트의 컨텍스트에는 아예 나타나지 않게 한다.
  */
-@ActiveProfiles("test")
+@ActiveProfiles({"test", "security-probe"})
 @WebMvcTest(controllers = SecurityConfigTest.ProbeController.class)
 @Import({SecurityConfig.class, JwtAuthenticationFilter.class, JwtTokenProvider.class,
         JwtAuthenticationEntryPoint.class, JwtAccessDeniedHandler.class, SecurityErrorResponder.class,
@@ -60,6 +67,7 @@ class SecurityConfigTest {
 
     /** 보호 경로 하나, 관리자 경로 하나, 공개 경로 둘. */
     @RestController
+    @Profile("security-probe")
     static class ProbeController {
         @GetMapping("/me")
         ApiResponse<Map<String, Object>> me(@AuthenticationPrincipal AuthPrincipal me) {
@@ -76,7 +84,7 @@ class SecurityConfigTest {
             return ApiResponse.of("로그인");
         }
 
-        @PostMapping("/auth/restore")
+        @PostMapping("/auth/restore/{provider}")
         ApiResponse<String> restore() {
             return ApiResponse.of("복구");
         }
@@ -140,7 +148,7 @@ class SecurityConfigTest {
         @DisplayName("리프레시 토큰으로는 API를 부를 수 없다 — 7일짜리로 30분 만료를 우회하는 것을 막는다")
         void refreshTokenRejected() throws Exception {
             mvc.perform(get("/me").header("Authorization",
-                            "Bearer " + tokenProvider.issueRefreshToken(1L, Role.USER)))
+                            "Bearer " + tokenProvider.issueRefreshToken(1L, Role.USER).token()))
                     .andExpect(status().isUnauthorized())
                     .andExpect(jsonPath("$.error.code").value("TOKEN_INVALID"));
         }
@@ -178,7 +186,7 @@ class SecurityConfigTest {
         void withdrawnCanStillRestore() throws Exception {
             activeUser.withdraw(LocalDateTime.now().minusDays(3));
 
-            mvc.perform(post("/auth/restore").header("Authorization",
+            mvc.perform(post("/auth/restore/google").header("Authorization",
                             "Bearer " + tokenProvider.issueAccessToken(1L, Role.USER)))
                     .andExpect(status().isOk());
         }

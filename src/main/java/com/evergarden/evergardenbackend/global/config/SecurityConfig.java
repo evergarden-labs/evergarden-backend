@@ -34,12 +34,14 @@ public class SecurityConfig {
     /**
      * 명세에서 {@code security: []}인 오퍼레이션 넷. 토큰을 받기 전에 부르는 것들이다.
      *
-     * <p>{@code /auth/restore}가 여기 있는 이유 — 탈퇴한 회원은 토큰이 있어도
+     * <p>{@code /auth/restore/*}가 여기 있는 이유 — 탈퇴한 회원은 토큰이 있어도
      * {@code USER_WITHDRAWN}으로 막히므로, 복구까지 막히면 되돌릴 방법이 없다(ADR-054).
+     * 경로에 {@code {provider}}가 붙는 이유는 {@code /auth/social/*}와 같다 — 소셜 토큰을
+     * 검증하려면 어느 제공자 것인지부터 알아야 한다.
      */
     private static final String[] PUBLIC_POST = {
             "/auth/social/*",        // AUTH-01 소셜 로그인
-            "/auth/restore",         // AUTH-04 탈퇴 복구
+            "/auth/restore/*",       // AUTH-07 탈퇴 복구
             "/auth/token/refresh",   // AUTH-05 토큰 재발급
             "/admin/auth/login"      // ADMIN-01 관리자 로그인
     };
