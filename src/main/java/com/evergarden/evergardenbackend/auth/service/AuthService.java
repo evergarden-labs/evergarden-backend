@@ -1,5 +1,10 @@
 package com.evergarden.evergardenbackend.auth.service;
 
+import com.evergarden.evergardenbackend.archive.entity.ArchiveCollaborator;
+import com.evergarden.evergardenbackend.archive.entity.CollaborationStatus;
+import com.evergarden.evergardenbackend.archive.entity.CollaboratorStatus;
+import com.evergarden.evergardenbackend.archive.repository.ArchiveCollaboratorRepository;
+import com.evergarden.evergardenbackend.archive.service.ArchiveCollaborationService;
 import com.evergarden.evergardenbackend.auth.client.SocialAuthClient;
 import com.evergarden.evergardenbackend.auth.dto.AuthResult;
 import com.evergarden.evergardenbackend.auth.dto.TokenPair;
@@ -37,6 +42,8 @@ public class AuthService {
     private final SocialAccountRepository socialAccountRepository;
     private final UserRepository userRepository;
     private final SanctionRepository sanctionRepository;
+    private final ArchiveCollaboratorRepository archiveCollaboratorRepository;
+    private final ArchiveCollaborationService archiveCollaborationService;
     private final JwtTokenProvider tokenProvider;
     private final RefreshTokenStore refreshTokenStore;
     private final NicknameGenerator nicknameGenerator;
@@ -47,6 +54,8 @@ public class AuthService {
             SocialAccountRepository socialAccountRepository,
             UserRepository userRepository,
             SanctionRepository sanctionRepository,
+            ArchiveCollaboratorRepository archiveCollaboratorRepository,
+            ArchiveCollaborationService archiveCollaborationService,
             JwtTokenProvider tokenProvider,
             RefreshTokenStore refreshTokenStore,
             NicknameGenerator nicknameGenerator,
@@ -55,6 +64,8 @@ public class AuthService {
         this.socialAccountRepository = socialAccountRepository;
         this.userRepository = userRepository;
         this.sanctionRepository = sanctionRepository;
+        this.archiveCollaboratorRepository = archiveCollaboratorRepository;
+        this.archiveCollaborationService = archiveCollaborationService;
         this.tokenProvider = tokenProvider;
         this.refreshTokenStore = refreshTokenStore;
         this.nicknameGenerator = nicknameGenerator;
@@ -96,12 +107,38 @@ public class AuthService {
         refreshTokenStore.revoke(userId);
     }
 
-    /** 회원 탈퇴(AUTH-04). 계정 상태 전환과 토큰 폐기까지만 한다(ADR-054 — 나머지는 기획·법무 결정 필요). */
+    /**
+     * 회원 탈퇴(AUTH-04). 상태 전환·토큰 폐기·공동 편집 정리까지 한다(ADR-054).
+     * 게시물·댓글 등 장기 데이터 처리 정책은 범위 밖이다 — 기획·법무 결정 필요.
+     */
     public void withdraw(Long userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
         user.withdraw(LocalDateTime.now());
         refreshTokenStore.revoke(userId);
+        endArchiveParticipation(userId);
+    }
+
+    /**
+     * 탈퇴 시 공동 편집을 정리한다(ADR-054). 소유한 아카이브 중 공동 편집이 열려 있으면
+     * 종료하고(참여자에게 실시간 알림이 간다 — {@link ArchiveCollaborationService#close}가
+     * 이미 발행하는 이벤트), 참여 중이던 아카이브에서는 나간 것으로 처리한다.
+     *
+     * <p>초대만 받고 아직 수락하지 않은 것(INVITED)은 ADR-054에 명시가 없어 손대지 않는다.
+     */
+    private void endArchiveParticipation(Long userId) {
+        List<ArchiveCollaborator> joined =
+                archiveCollaboratorRepository.findByUser_IdAndStatus(userId, CollaboratorStatus.JOINED);
+        for (ArchiveCollaborator collaborator : joined) {
+            Long archiveId = collaborator.getArchive().getId();
+            if (collaborator.isOwner()) {
+                if (collaborator.getArchive().getCollaborationStatus() == CollaborationStatus.OPEN) {
+                    archiveCollaborationService.close(userId, archiveId);
+                }
+            } else {
+                archiveCollaborationService.leave(userId, archiveId);
+            }
+        }
     }
 
     /**
