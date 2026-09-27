@@ -30,6 +30,13 @@ public class AuthController {
         return ApiResponse.of(authService.loginWithSocial(provider, request.socialAccessToken()));
     }
 
+    @PostMapping("/auth/restore/{provider}")
+    public ApiResponse<AuthResult> restoreAccount(
+            @PathVariable String provider,
+            @Valid @RequestBody SocialLoginRequest request) {
+        return ApiResponse.of(authService.restoreAccount(provider, request.socialAccessToken()));
+    }
+
     @PostMapping("/auth/token/refresh")
     public ApiResponse<TokenPair> refreshToken(@Valid @RequestBody RefreshTokenRequest request) {
         return ApiResponse.of(authService.refreshToken(request.refreshToken()));
