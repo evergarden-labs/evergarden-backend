@@ -25,6 +25,8 @@ import com.evergarden.evergardenbackend.user.entity.User;
 import com.evergarden.evergardenbackend.user.entity.UserStatus;
 import com.evergarden.evergardenbackend.user.repository.UserRepository;
 import com.evergarden.evergardenbackend.user.service.NicknameGenerator;
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwtException;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
@@ -34,7 +36,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** 인증(AUTH-01~07 중 소셜 로그인·재발급·로그아웃·탈퇴). {@code restoreAccount}는 별도로 다룬다. */
+/** 인증(AUTH-01~07) — 소셜 로그인·가입·복구·재발급·로그아웃·탈퇴. */
 @Service
 @Transactional
 public class AuthService {
@@ -112,9 +114,14 @@ public class AuthService {
         return issueAuthResult(user, false);
     }
 
-    /** 액세스 토큰 재발급(AUTH-05). 리프레시 토큰도 함께 회전한다(ADR-055). */
+    /**
+     * 액세스 토큰 재발급(AUTH-05). 리프레시 토큰도 함께 회전한다(ADR-055).
+     *
+     * <p>{@code Authorization} 헤더가 아니라 요청 본문으로 토큰이 들어와 {@code JwtAuthenticationFilter}를
+     * 거치지 않는다 — 서명·형식 오류를 여기서 직접 잡아야 한다.
+     */
     public TokenPair refreshToken(String refreshToken) {
-        RefreshTokenPrincipal parsed = tokenProvider.parseRefreshToken(refreshToken);
+        RefreshTokenPrincipal parsed = parseRefreshTokenOrThrow(refreshToken);
         if (!refreshTokenStore.isValid(parsed.userId(), parsed.jti())) {
             throw new BusinessException(ErrorCode.REFRESH_TOKEN_EXPIRED);
         }
@@ -169,6 +176,20 @@ public class AuthService {
      * 돌려줘 컨텍스트 기동 자체가 실패한다(테스트에서 {@code @MockitoBean}으로 클라이언트를
      * 갈아 끼울 때 실제로 겪은 문제).
      */
+    /**
+     * {@code JwtAuthenticationFilter.authenticate()}와 같은 분기다 — 액세스 토큰은 필터가
+     * 이렇게 잡아주지만, 리프레시 토큰은 본문으로 오가서 여기서 직접 잡아야 한다.
+     */
+    private RefreshTokenPrincipal parseRefreshTokenOrThrow(String refreshToken) {
+        try {
+            return tokenProvider.parseRefreshToken(refreshToken);
+        } catch (ExpiredJwtException e) {
+            throw new BusinessException(ErrorCode.REFRESH_TOKEN_EXPIRED);
+        } catch (JwtException | IllegalArgumentException e) {
+            throw new BusinessException(ErrorCode.TOKEN_INVALID);
+        }
+    }
+
     private SocialAuthClient clientFor(SocialProvider provider) {
         return socialAuthClients.stream()
                 .filter(client -> client.provider() == provider)
