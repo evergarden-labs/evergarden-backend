@@ -16,6 +16,9 @@ public interface TimeCapsuleRepository extends JpaRepository<TimeCapsule, Long> 
     /** 위치 해제 판정(TC-04) 대상 — 아직 안 열렸고 위치 조건인 것만. 개인 규모라 페이지 없이 전부 본다. */
     List<TimeCapsule> findByOwner_IdAndUnlockTypeAndStatus(Long ownerId, UnlockType unlockType, TimeCapsuleStatus status);
 
+    /** 상태별 캡슐 수. 마이페이지의 {@code sealedCapsuleCount}/{@code unlockableCapsuleCount}(MY-01). */
+    long countByOwner_IdAndStatus(Long ownerId, TimeCapsuleStatus status);
+
     /**
      * 날짜 해제 배치 대상 — 전체 사용자를 통틀어, 날짜 조건이고 아직 안 열렸고
      * {@code unlockDate}가 오늘이거나 지난 것. 매일 한 번 도는 배치라 개수가 많지

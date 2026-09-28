@@ -13,6 +13,9 @@ public interface ArchiveRepository extends JpaRepository<Archive, Long> {
 
     boolean existsByTrip_Id(Long tripId);
 
+    /** 내가 만든(소유한) 아카이브 수. 마이페이지의 {@code archiveCount}(MY-01) — 참여 중인 것은 안 센다. */
+    long countByOwner_Id(Long userId);
+
     /** 일정에 연결된 아카이브(있으면). 플래너의 {@code linkedArchiveId}용(ADR-001). */
     Optional<Archive> findByTrip_Id(Long tripId);
 
