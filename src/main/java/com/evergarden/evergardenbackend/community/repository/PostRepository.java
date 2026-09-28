@@ -19,6 +19,19 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     long countByAuthor_IdAndStatus(Long authorId, PostStatus status);
 
     /**
+     * 내 게시물들이 받은 좋아요 총합. 마이페이지의 {@code receivedLikeCount}(MY-01).
+     *
+     * <p>{@code COALESCE}가 꼭 필요하다 — 대상 게시물이 0개(신규 사용자)면 SQL {@code SUM}은
+     * {@code NULL}을 돌려주지, {@code 0}을 돌려주지 않는다.
+     */
+    @Query("""
+            SELECT COALESCE(SUM(p.likeCount), 0) FROM Post p
+            WHERE p.author.id = :authorId
+              AND p.status = com.evergarden.evergardenbackend.community.entity.PostStatus.ACTIVE
+            """)
+    long sumLikeCountByAuthor(@Param("authorId") Long authorId);
+
+    /**
      * 최신 피드(COMM-01·02). {@code regionCode}가 있으면 그 지역이 걸린 게시물만(스냅샷
      * 기준, ADR-003) — {@code listPosts}/{@code listRegionPosts}가 이 쿼리 하나를
      * 같이 쓴다. 커서는 id 내림차순(ADR-011·ADR-058).
