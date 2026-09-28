@@ -14,6 +14,9 @@ import com.evergarden.evergardenbackend.archive.repository.ArchiveRepository;
 import com.evergarden.evergardenbackend.archive.websocket.ArchiveEditorRegistry;
 import com.evergarden.evergardenbackend.global.exception.BusinessException;
 import com.evergarden.evergardenbackend.global.exception.ErrorCode;
+import com.evergarden.evergardenbackend.notification.entity.NotificationTargetType;
+import com.evergarden.evergardenbackend.notification.entity.NotificationType;
+import com.evergarden.evergardenbackend.notification.service.NotificationService;
 import com.evergarden.evergardenbackend.user.entity.User;
 import com.evergarden.evergardenbackend.user.repository.UserRepository;
 import java.time.LocalDateTime;
@@ -28,8 +31,10 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 아카이브 공동 편집 초대·수락·거절·나가기·종료(ARCH-10·11·13·14·18).
  *
- * <p>초대 알림(NOTI-02)은 알림 도메인이 아직 없어서 여기서 만들지 않는다.
- * 알림 도메인을 구현할 때 이 서비스가 이벤트를 발행하도록 이어붙이면 된다.
+ * <p>초대 알림(NOTI-02)은 {@code TimeCapsuleService.notifyUnlockable()}과 같은 방식으로
+ * {@code NotificationService.notify()}를 직접 호출한다 — 이 도메인엔 아직 이벤트
+ * 발행/구독으로 여러 소비자가 갈라지는 경우가 없어서, {@code ArchiveRealtimeEvent}처럼
+ * 별도 이벤트로 분리할 이유가 없다.
  */
 @Service
 @RequiredArgsConstructor
@@ -44,6 +49,7 @@ public class ArchiveCollaborationService {
     private final ArchiveMapper archiveMapper;
     private final ArchiveEditorRegistry editorRegistry;
     private final ApplicationEventPublisher eventPublisher;
+    private final NotificationService notificationService;
 
     @Value("${websocket.public-url}")
     private String websocketUrl;
@@ -77,6 +83,8 @@ public class ArchiveCollaborationService {
                         ArchiveCollaborator.invite(archive, invitee, LocalDateTime.now())));
 
         archive.openCollaboration();
+        notificationService.notify(invitee, NotificationType.COLLAB_INVITE, "공동 편집 초대",
+                "\"" + archive.getTitle() + "\" 아카이브에 초대됐어요.", NotificationTargetType.ARCHIVE, archiveId);
         return CollaboratorResponse.of(collaborator);
     }
 
