@@ -84,4 +84,8 @@ public class Notification {
     public void markRead() {
         this.read = true;
     }
+
+    public boolean isOwnedBy(Long userId) {
+        return receiver.getId().equals(userId);
+    }
 }
