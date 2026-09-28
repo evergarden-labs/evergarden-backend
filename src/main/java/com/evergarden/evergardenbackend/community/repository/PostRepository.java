@@ -18,6 +18,9 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     /** 공개 프로필의 {@code postCount}(COMM-20). */
     long countByAuthor_IdAndStatus(Long authorId, PostStatus status);
 
+    /** 대시보드의 {@code totalPostCount}(ADMIN-03) — 삭제된 것은 뺀다. */
+    long countByStatus(PostStatus status);
+
     /**
      * 내 게시물들이 받은 좋아요 총합. 마이페이지의 {@code receivedLikeCount}(MY-01).
      *

@@ -17,6 +17,9 @@ public interface CommentRepository extends JpaRepository<Comment, Long> {
      */
     long countByParentAndStatus(Comment parent, CommentStatus status);
 
+    /** 관리자 회원 상세의 {@code commentCount}(ADMIN-13) — 댓글·대댓글 둘 다 같은 테이블이라 합쳐 센다. */
+    long countByAuthor_IdAndStatus(Long authorId, CommentStatus status);
+
     /** 댓글 상세에 앞의 몇 개만 미리 담는 용도(작성 순서). 나머지는 {@code listReplies}로. */
     List<Comment> findTop3ByParentAndStatusOrderByIdAsc(Comment parent, CommentStatus status);
 

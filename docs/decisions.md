@@ -1,6 +1,6 @@
 # 결정 기록 (ADR)
 
-> 최종 수정 2026-09-19 · 근거 문서 4종 중 하나
+> 최종 수정 2026-09-29 · 근거 문서 4종 중 하나
 >
 > 이 문서는 **"왜 이렇게 정했는가"**를 남기는 곳입니다.
 > 스키마나 명세만 봐서는 이유를 알 수 없는 결정들을 모았습니다.
@@ -1038,6 +1038,40 @@ ADR-010에 따라 서버는 앱이 보낸 소셜 액세스 토큰을 제공자 A
 
 **영향** — AUTH-01·AUTH-02 / `application.yml`의 `oauth.google.user-info-uri`·
 `oauth.kakao.user-info-uri` 제거(`token-info-uri`만 유지) / `SocialAuthClient` 구현체
+
+---
+
+### ADR-063 · 관리자 로그인은 리프레시 토큰을 발급하지 않는다
+
+`AdminSession.refreshToken`은 항상 `null`입니다. 액세스 토큰이 만료되면 재로그인시킵니다.
+
+**이유** — 기존 `RefreshTokenStore`는 Redis 키를 역할 구분 없이 `userId`만으로 관리합니다
+(`refresh:user:{userId}`). `admins`와 `users`는 서로 다른 시퀀스로 ID를 매기기 때문에 값이
+우연히 겹칠 수 있는데, 그대로 재사용하면 관리자 로그인이 같은 ID의 일반 회원 리프레시
+토큰을 덮어쓰는 충돌이 생깁니다. 관리자 세션은 일반 회원보다 짧고 드물게 쓰여
+재로그인 비용이 크지 않아, 스토어에 역할 네임스페이스를 새로 만드는 것보다
+아예 발급하지 않는 쪽이 단순하고 안전합니다.
+
+**대가** — 관리자는 액세스 토큰이 만료될 때마다 다시 로그인해야 합니다.
+
+**영향** — ADMIN-01·ADMIN-02 / `AdminSession.refreshToken`은 스키마상 nullable이지만
+실제로는 항상 `null` / `adminLogout`은 폐기할 토큰이 없어 인증 확인 외에 하는 일이 없음
+
+---
+
+### ADR-064 · 콘텐츠 강제 삭제 사유는 Post·Comment에 컬럼으로 직접 남긴다
+
+`posts`·`comments`에 `deleted_by_admin_id`·`delete_reason` 컬럼을 추가합니다(마이그레이션 V8).
+관리자가 강제 삭제할 때만 채우고, 작성자 본인 삭제(COMM-06·13·16)는 그대로 `null`입니다.
+
+**이유** — `sanctions` 테이블은 `user_id`가 필수라 콘텐츠 삭제 사유를 그대로 넣기 애매하고,
+`SanctionType`도 `WARNING`/`BLOCK`/`UNBLOCK`뿐이라 "콘텐츠 삭제"를 억지로 끼워 넣으면
+`AdminUserDetail.sanctions`(경고·차단·해제 이력)의 의미가 깨집니다. 별도 감사 로그 테이블을
+새로 파는 대신, `User.withdrawnAt`·`Report.reviewedBy`/`note`처럼 감사 메타데이터를 해당
+엔티티에 직접 두는 기존 패턴을 그대로 따릅니다.
+
+**영향** — ADMIN-06·ADMIN-07·ADMIN-08 / `posts`·`comments` 테이블에 컬럼 추가(마이그레이션 V8)
+/ `Post.adminDelete()`·`Comment.adminDelete()`
 
 ---
 

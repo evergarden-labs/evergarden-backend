@@ -1,6 +1,6 @@
 # ERD
 
-> 최종 수정 2026-09-19 · 근거 문서 5종 중 하나
+> 최종 수정 2026-09-29 · 근거 문서 5종 중 하나
 >
 > 테이블 25개. 모든 테이블은 `created_at`·`updated_at`을 가지며 아래 표에서는 생략했습니다
 > (`post_likes`처럼 수정될 일이 없는 테이블은 `created_at`만).
@@ -11,7 +11,7 @@
 
 | 데이터 | 어디에 | 왜 |
 |---|---|---|
-| 리프레시 토큰 | Redis (`jti → user_id`, TTL 7일) | 만료 관리를 TTL에 맡깁니다 |
+| 리프레시 토큰 | Redis (`jti → user_id`, TTL 7일) | 만료 관리를 TTL에 맡깁니다. 관리자 로그인은 아예 발급하지 않음 (ADR-063) |
 | 사진·영상 원본 | S3 | `media.storage_key`로 참조 (ADR-023) |
 
 ---
@@ -245,6 +245,8 @@
 | `like_count` | INT |  | N | 인기 피드 정렬용 비정규화 (ADR-044) |
 | `comment_count` | INT |  | N | 대댓글 포함 |
 | `status` | VARCHAR(10) |  | N | ACTIVE / DELETED |
+| `deleted_by_admin_id` | BIGINT | FK | Y | → admins. 관리자 강제 삭제일 때만 채움. 작성자 본인 삭제(COMM-06)면 NULL (ADR-064) |
+| `delete_reason` | VARCHAR(200) |  | Y | 관리자 강제 삭제 사유 (ADMIN-06, ADR-064) |
 | `CHECK 제약` | — | - |  | 걸지 말 것 — SET NULL과 충돌해 삭제가 실패함 (ADR-002) |
 | `INDEX(status, created_at)` | — | IDX |  | 최신 피드 |
 | `INDEX(status, created_at, like_count)` | — | IDX |  | 인기 피드 (최근 30일) |
@@ -275,6 +277,8 @@
 | `parent_comment_id` | BIGINT | FK | Y | → comments. 대댓글이면 채움. 1단계까지만 |
 | `content` | TEXT |  | Y | 삭제되면 NULL (자리는 남김, ADR-007) |
 | `status` | VARCHAR(10) |  | N | ACTIVE / DELETED |
+| `deleted_by_admin_id` | BIGINT | FK | Y | → admins. 관리자 강제 삭제일 때만 채움(대댓글도 같은 테이블). 작성자 본인 삭제(COMM-13·16)면 NULL (ADR-064) |
+| `delete_reason` | VARCHAR(200) |  | Y | 관리자 강제 삭제 사유 (ADMIN-07·08, ADR-064) |
 
 ## `reports` · 접수된 신고
 

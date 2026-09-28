@@ -3993,6 +3993,9 @@ paths:
 
         인증은 **일반 회원과 같은 Bearer JWT를 쓰고 토큰의 역할 클레임으로 구분합니다**(ADR-036).
         관리자 전용 세션을 따로 두지 않으므로 인증 처리가 한 벌입니다.
+
+        `refreshToken`은 항상 `null`입니다 — 리프레시 토큰을 발급하지 않고, 액세스 토큰이
+        만료되면 재로그인시킵니다(ADR-063).
       requestBody:
         required: true
         content:
@@ -4032,7 +4035,9 @@ paths:
       operationId: adminLogout
       summary: 관리자 로그아웃
       x-user-stories: [ADMIN-02]
-      description: 관리자 세션을 끝냅니다. 발급된 토큰을 폐기합니다.
+      description: |
+        관리자 세션을 끝냅니다. 리프레시 토큰을 발급하지 않으므로(ADR-063) 서버가 따로
+        폐기할 토큰이 없고, 인증 확인(`ADMIN_ONLY`) 외에는 하는 일이 없습니다.
       responses:
         '200':
           description: 로그아웃 완료
@@ -4449,7 +4454,8 @@ paths:
       x-user-stories: [ADMIN-06]
       description: |
         정책에 반하는 게시물을 운영자 권한으로 내립니다. 사유를 반드시 남깁니다.
-        작성자 본인의 삭제(COMM-06)와 달리 **누가 왜 지웠는지가 기록됩니다.**
+        작성자 본인의 삭제(COMM-06)와 달리 **누가 왜 지웠는지가 기록됩니다**
+        (`posts.deleted_by_admin_id`·`delete_reason`, ADR-064).
       parameters:
         - $ref: '#/components/parameters/PostId'
       requestBody:
@@ -4490,6 +4496,8 @@ paths:
       x-user-stories: [ADMIN-07]
       description: |
         정책에 반하는 댓글을 내립니다. 대댓글이 달려 있으면 자리는 남깁니다(ADR-007).
+        작성자 본인의 삭제(COMM-13)와 달리 누가 왜 지웠는지가 기록됩니다
+        (`comments.deleted_by_admin_id`·`delete_reason`, ADR-064).
       parameters:
         - $ref: '#/components/parameters/CommentId'
       requestBody:
@@ -4528,7 +4536,9 @@ paths:
       operationId: adminDeleteReply
       summary: 대댓글 삭제
       x-user-stories: [ADMIN-08]
-      description: 정책에 반하는 대댓글을 내립니다. 저장은 댓글과 같은 테이블입니다.
+      description: |
+        정책에 반하는 대댓글을 내립니다. 저장은 댓글과 같은 테이블입니다 — 누가 왜
+        지웠는지도 같은 컬럼(`comments.deleted_by_admin_id`·`delete_reason`)에 남습니다(ADR-064).
       parameters:
         - $ref: '#/components/parameters/ReplyId'
       requestBody:

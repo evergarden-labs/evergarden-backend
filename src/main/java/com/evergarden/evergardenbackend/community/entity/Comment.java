@@ -1,6 +1,7 @@
 package com.evergarden.evergardenbackend.community.entity;
 
 import com.evergarden.evergardenbackend.global.entity.BaseTimeEntity;
+import com.evergarden.evergardenbackend.user.entity.Admin;
 import com.evergarden.evergardenbackend.user.entity.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -53,6 +54,17 @@ public class Comment extends BaseTimeEntity {
     @Column(nullable = false, length = 10)
     private CommentStatus status;
 
+    /**
+     * 관리자가 강제 삭제했으면 그 관리자(ADMIN-07·08 — 대댓글도 같은 테이블이라 같이 쓴다).
+     * 작성자 본인 삭제(COMM-13·16)면 {@code null}
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "deleted_by_admin_id")
+    private Admin deletedByAdmin;
+
+    @Column(name = "delete_reason", length = 200)
+    private String deleteReason;
+
     private Comment(Post post, User author, Comment parent, String content) {
         this.post = post;
         this.author = author;
@@ -84,6 +96,17 @@ public class Comment extends BaseTimeEntity {
     public void delete() {
         this.status = CommentStatus.DELETED;
         this.content = null;
+    }
+
+    /**
+     * 관리자가 정책 위반으로 강제 삭제한다(ADMIN-07·08). {@link #delete()}와 같이
+     * 내용을 비우고 자리는 남기되(ADR-007), 누가 왜 지웠는지를 같이 남긴다.
+     */
+    public void adminDelete(Admin admin, String reason) {
+        this.status = CommentStatus.DELETED;
+        this.content = null;
+        this.deletedByAdmin = admin;
+        this.deleteReason = reason;
     }
 
     public boolean isReply() {
