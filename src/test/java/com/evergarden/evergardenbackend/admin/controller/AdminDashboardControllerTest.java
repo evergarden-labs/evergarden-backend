@@ -15,9 +15,12 @@ import com.evergarden.evergardenbackend.global.security.JwtAuthenticationFilter;
 import com.evergarden.evergardenbackend.global.security.JwtTokenProvider;
 import com.evergarden.evergardenbackend.global.security.Role;
 import com.evergarden.evergardenbackend.global.security.SecurityErrorResponder;
+import com.evergarden.evergardenbackend.user.entity.User;
 import com.evergarden.evergardenbackend.user.repository.UserRepository;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -44,6 +47,18 @@ class AdminDashboardControllerTest {
     void 대시보드_비로그인() throws Exception {
         mvc.perform(get("/admin/dashboard"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("일반 회원 토큰이면 403 ADMIN_ONLY — hasRole(ADMIN)이 실제로 막는다")
+    void 대시보드_일반회원토큰_거절() throws Exception {
+        given(userRepository.findById(ArgumentMatchers.any()))
+                .willReturn(Optional.of(User.builder().nickname("여행자").build()));
+        String userToken = tokenProvider.issueAccessToken(1L, Role.USER);
+
+        mvc.perform(get("/admin/dashboard").header("Authorization", "Bearer " + userToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("ADMIN_ONLY"));
     }
 
     @Test

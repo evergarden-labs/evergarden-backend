@@ -26,9 +26,11 @@ import com.evergarden.evergardenbackend.global.security.SecurityErrorResponder;
 import com.evergarden.evergardenbackend.report.entity.ReportReason;
 import com.evergarden.evergardenbackend.report.entity.ReportStatus;
 import com.evergarden.evergardenbackend.report.entity.ReportTargetType;
+import com.evergarden.evergardenbackend.user.entity.User;
 import com.evergarden.evergardenbackend.user.repository.UserRepository;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -75,6 +77,17 @@ class AdminReportControllerTest {
         return new AdminReportDetail(1L, ReportTargetType.POST, 10L, author(2L),
                 ReportReason.ABUSE, null, ReportStatus.PENDING, author(1L), LocalDateTime.now(),
                 "원본 내용", false, null, null, null);
+    }
+
+    @Test
+    @DisplayName("일반 회원 토큰이면 403 ADMIN_ONLY — hasRole(ADMIN)이 실제로 막는다")
+    void 목록_일반회원토큰_거절() throws Exception {
+        given(userRepository.findById(any())).willReturn(Optional.of(User.builder().nickname("여행자").build()));
+        String userToken = tokenProvider.issueAccessToken(1L, Role.USER);
+
+        mvc.perform(get("/admin/reports").header("Authorization", "Bearer " + userToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("ADMIN_ONLY"));
     }
 
     @Test
