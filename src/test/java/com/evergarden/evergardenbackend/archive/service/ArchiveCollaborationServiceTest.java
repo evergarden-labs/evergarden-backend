@@ -3,6 +3,7 @@ package com.evergarden.evergardenbackend.archive.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -19,6 +20,9 @@ import com.evergarden.evergardenbackend.archive.repository.ArchiveItemRepository
 import com.evergarden.evergardenbackend.archive.repository.ArchiveRepository;
 import com.evergarden.evergardenbackend.global.exception.BusinessException;
 import com.evergarden.evergardenbackend.global.exception.ErrorCode;
+import com.evergarden.evergardenbackend.notification.entity.NotificationTargetType;
+import com.evergarden.evergardenbackend.notification.entity.NotificationType;
+import com.evergarden.evergardenbackend.notification.service.NotificationService;
 import com.evergarden.evergardenbackend.user.entity.User;
 import com.evergarden.evergardenbackend.user.repository.UserRepository;
 import java.time.LocalDateTime;
@@ -45,10 +49,11 @@ class ArchiveCollaborationServiceTest {
             mock(com.evergarden.evergardenbackend.archive.websocket.ArchiveEditorRegistry.class);
     private final org.springframework.context.ApplicationEventPublisher eventPublisher =
             mock(org.springframework.context.ApplicationEventPublisher.class);
+    private final NotificationService notificationService = mock(NotificationService.class);
 
     private final ArchiveCollaborationService service = new ArchiveCollaborationService(
             archiveRepository, archiveItemRepository, collaboratorRepository,
-            userRepository, accessGuard, archiveMapper, editorRegistry, eventPublisher);
+            userRepository, accessGuard, archiveMapper, editorRegistry, eventPublisher, notificationService);
 
     private Archive archive;
     private User invitee;
@@ -136,6 +141,20 @@ class ArchiveCollaborationServiceTest {
         service.invite(OWNER_ID, 10L, INVITEE_ID);
 
         assertThat(archive.getCollaborationStatus()).isEqualTo(CollaborationStatus.OPEN);
+    }
+
+    @Test
+    @DisplayName("초대에 성공하면 초대받은 사람에게 COLLAB_INVITE 알림을 보낸다(NOTI-02)")
+    void 초대_성공시_알림발송() {
+        given(userRepository.findById(INVITEE_ID)).willReturn(Optional.of(invitee));
+        given(collaboratorRepository.findByArchiveAndUser_Id(archive, INVITEE_ID)).willReturn(Optional.empty());
+        given(collaboratorRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
+
+        service.invite(OWNER_ID, 10L, INVITEE_ID);
+
+        verify(notificationService).notify(
+                eq(invitee), eq(NotificationType.COLLAB_INVITE), any(), any(),
+                eq(NotificationTargetType.ARCHIVE), eq(10L));
     }
 
     @Test
