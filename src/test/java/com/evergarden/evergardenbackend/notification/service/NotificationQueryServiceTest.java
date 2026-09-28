@@ -17,6 +17,7 @@ import com.evergarden.evergardenbackend.notification.dto.UnreadCount;
 import com.evergarden.evergardenbackend.notification.dto.UpdateNotificationSettingsRequest;
 import com.evergarden.evergardenbackend.notification.entity.Notification;
 import com.evergarden.evergardenbackend.notification.entity.NotificationSetting;
+import com.evergarden.evergardenbackend.notification.entity.NotificationSettingId;
 import com.evergarden.evergardenbackend.notification.entity.NotificationTargetType;
 import com.evergarden.evergardenbackend.notification.entity.NotificationType;
 import com.evergarden.evergardenbackend.notification.repository.NotificationRepository;
@@ -28,6 +29,7 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -211,8 +213,30 @@ class NotificationQueryServiceTest {
 
         service.updateNotificationSettings(1L, request);
 
-        verify(notificationSettingRepository).save(argThat(
+        verify(notificationSettingRepository).saveAndFlush(argThat(
                 setting -> setting.getType() == NotificationType.CAPSULE_UNLOCK && !setting.isEnabled()));
+    }
+
+    @Test
+    @DisplayName("신규 행 저장이 경합으로 제약 위반이 나면, 이미 만들어진 행을 읽어 원하던 값을 적용한다")
+    void 설정_변경_신규행_경합() {
+        User user = receiver();
+        NotificationSetting racedIn = new NotificationSetting(user, NotificationType.CAPSULE_UNLOCK, true);
+        given(notificationSettingRepository.findByUser_Id(1L)).willReturn(List.of());
+        given(userRepository.getReferenceById(1L)).willReturn(user);
+        given(notificationSettingRepository.saveAndFlush(any()))
+                .willThrow(new DataIntegrityViolationException("duplicate"));
+        given(notificationSettingRepository.findById(new NotificationSettingId(1L, NotificationType.CAPSULE_UNLOCK)))
+                .willReturn(Optional.of(racedIn));
+        UpdateNotificationSettingsRequest request =
+                new UpdateNotificationSettingsRequest(List.of(new UpdateNotificationSettingsRequest.Item(
+                        NotificationType.CAPSULE_UNLOCK, false)));
+
+        List<NotificationSettingResponse> result = service.updateNotificationSettings(1L, request);
+
+        assertThat(racedIn.isEnabled()).isFalse();
+        assertThat(result).filteredOn(r -> r.type() == NotificationType.CAPSULE_UNLOCK)
+                .extracting(NotificationSettingResponse::enabled).containsExactly(false);
     }
 
     @Test
