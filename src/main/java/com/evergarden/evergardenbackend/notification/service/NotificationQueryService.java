@@ -3,9 +3,19 @@ package com.evergarden.evergardenbackend.notification.service;
 import com.evergarden.evergardenbackend.global.exception.BusinessException;
 import com.evergarden.evergardenbackend.global.exception.ErrorCode;
 import com.evergarden.evergardenbackend.notification.dto.NotificationResponse;
+import com.evergarden.evergardenbackend.notification.dto.NotificationSettingResponse;
 import com.evergarden.evergardenbackend.notification.dto.UnreadCount;
+import com.evergarden.evergardenbackend.notification.dto.UpdateNotificationSettingsRequest;
 import com.evergarden.evergardenbackend.notification.entity.Notification;
+import com.evergarden.evergardenbackend.notification.entity.NotificationSetting;
+import com.evergarden.evergardenbackend.notification.entity.NotificationType;
 import com.evergarden.evergardenbackend.notification.repository.NotificationRepository;
+import com.evergarden.evergardenbackend.notification.repository.NotificationSettingRepository;
+import com.evergarden.evergardenbackend.user.repository.UserRepository;
+import java.util.Arrays;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -23,6 +33,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class NotificationQueryService {
 
     private final NotificationRepository notificationRepository;
+    private final NotificationSettingRepository notificationSettingRepository;
+    private final UserRepository userRepository;
 
     /** 받은 알림을 최신순으로(NOTI-01). {@code COLLAB_INVITE}·{@code CAPSULE_UNLOCK}·{@code WARNING}은
      * 전부 이 목록의 {@code type} 값일 뿐 조회 로직은 타입 구분이 없다(NOTI-02·05). */
@@ -59,5 +71,59 @@ public class NotificationQueryService {
     public UnreadCount markAllNotificationsRead(Long userId) {
         notificationRepository.markAllAsRead(userId);
         return new UnreadCount(0);
+    }
+
+    /**
+     * 알림 종류별 수신 여부를 반환한다(NOTI-03). 사용자가 손댄 적 없는 종류는 행 자체가
+     * 없어서(발송 쪽 기본값 로직과 같은 전제 — 행 없으면 켜진 것으로 본다), {@code NotificationType}
+     * 전체 값에 실제 설정 행을 병합한다({@code RegionVisitService.listMyRegions()}와 같은 패턴).
+     */
+    public List<NotificationSettingResponse> getNotificationSettings(Long userId) {
+        return toResponses(settingsByType(userId));
+    }
+
+    /**
+     * 받은 항목만 upsert한다(NOTI-03). 안 보낸 종류는 그대로 둔다.
+     *
+     * <p>{@code WARNING}을 끄려는 항목은 저장을 시도하기 전에 걸러 {@code INVALID_REQUEST}로
+     * 바꿔 던진다 — {@code NotificationSetting.changeEnabled()}가 이 경우 {@code IllegalStateException}을
+     * 던지는데, 그대로 두면 처리 안 된 예외로 500이 된다(AUTH의 {@code refreshToken}에서 정확히
+     * 같은 패턴으로 실제 겪은 문제라 반드시 먼저 확인한다).
+     */
+    @Transactional
+    public List<NotificationSettingResponse> updateNotificationSettings(
+            Long userId, UpdateNotificationSettingsRequest request) {
+        Map<NotificationType, NotificationSetting> byType = settingsByType(userId);
+        for (UpdateNotificationSettingsRequest.Item item : request.settings()) {
+            if (!item.enabled() && !item.type().isMutable()) {
+                throw new BusinessException(ErrorCode.INVALID_REQUEST);
+            }
+            NotificationSetting setting = byType.get(item.type());
+            if (setting != null) {
+                setting.changeEnabled(item.enabled());
+            } else {
+                setting = notificationSettingRepository.save(new NotificationSetting(
+                        userRepository.getReferenceById(userId), item.type(), item.enabled()));
+                byType.put(item.type(), setting);
+            }
+        }
+        return toResponses(byType);
+    }
+
+    private Map<NotificationType, NotificationSetting> settingsByType(Long userId) {
+        Map<NotificationType, NotificationSetting> byType = new EnumMap<>(NotificationType.class);
+        notificationSettingRepository.findByUser_Id(userId)
+                .forEach(setting -> byType.put(setting.getType(), setting));
+        return byType;
+    }
+
+    private List<NotificationSettingResponse> toResponses(Map<NotificationType, NotificationSetting> byType) {
+        return Arrays.stream(NotificationType.values())
+                .map(type -> {
+                    NotificationSetting setting = byType.get(type);
+                    boolean enabled = setting == null || setting.isEnabled();
+                    return new NotificationSettingResponse(type, enabled, type.isMutable());
+                })
+                .toList();
     }
 }
