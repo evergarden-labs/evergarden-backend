@@ -181,6 +181,7 @@ class AdminReportServiceTest {
         assertThat(result.targetUserValidReportCount()).isZero();
         assertThat(result.appliedSanction()).isNull();
         verify(userRepository, never()).increaseValidReportCount(any());
+        verify(userRepository, never()).warnIfNotBlocked(any());
         verify(userRepository, never()).updateStatus(any(), any());
     }
 
@@ -200,7 +201,7 @@ class AdminReportServiceTest {
         assertThat(result.appliedSanction()).isNotNull();
         assertThat(result.appliedSanction().type().name()).isEqualTo("WARNING");
         verify(userRepository).increaseValidReportCount(TARGET_USER_ID);
-        verify(userRepository).updateStatus(TARGET_USER_ID, UserStatus.WARNED);
+        verify(userRepository).warnIfNotBlocked(TARGET_USER_ID);
         verify(notificationService).notify(
                 eq(targetUser), eq(NotificationType.WARNING), any(), any(), eq(null), eq(null));
     }
@@ -219,6 +220,7 @@ class AdminReportServiceTest {
 
         assertThat(result.targetUserValidReportCount()).isEqualTo(2);
         assertThat(result.appliedSanction()).isNull();
+        verify(userRepository, never()).warnIfNotBlocked(any());
         verify(userRepository, never()).updateStatus(any(), any());
     }
 
@@ -254,6 +256,7 @@ class AdminReportServiceTest {
 
         assertThat(result.targetUserValidReportCount()).isEqualTo(4);
         assertThat(result.appliedSanction()).isNull();
+        verify(userRepository, never()).warnIfNotBlocked(any());
         verify(userRepository, never()).updateStatus(any(), any());
         verify(refreshTokenStore, never()).revoke(any());
     }

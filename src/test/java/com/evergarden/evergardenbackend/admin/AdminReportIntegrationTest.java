@@ -2,6 +2,7 @@ package com.evergarden.evergardenbackend.admin;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -20,6 +21,7 @@ import com.evergarden.evergardenbackend.user.entity.Admin;
 import com.evergarden.evergardenbackend.user.entity.User;
 import com.evergarden.evergardenbackend.user.repository.AdminRepository;
 import com.evergarden.evergardenbackend.user.repository.UserRepository;
+import jakarta.persistence.EntityManager;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -50,6 +52,7 @@ class AdminReportIntegrationTest extends IntegrationTest {
     @Autowired AdminRepository adminRepository;
     @Autowired PostRepository postRepository;
     @Autowired ReportRepository reportRepository;
+    @Autowired EntityManager entityManager;
 
     private String adminToken() {
         Admin admin = adminRepository.save(Admin.builder()
@@ -137,5 +140,41 @@ class AdminReportIntegrationTest extends IntegrationTest {
                                 """))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("REPORT_ALREADY_REVIEWED"));
+    }
+
+    @Test
+    @DisplayName("이미 차단된 회원이 뒤늦게 1번째 유효 판정을 받아도 자동 경고가 차단을 풀지 않는다(ADR-033)")
+    void 차단된회원_뒤늦은_첫유효판정_차단유지() throws Exception {
+        long unique = System.nanoTime() % 100_000;
+        User target = userRepository.save(User.builder().nickname("대상자e" + unique).build());
+        User reporter = userRepository.save(User.builder().nickname("신고자e" + unique).build());
+        Post post = postRepository.save(Post.builder()
+                .author(target).content("내용").shareType(ShareType.ARCHIVE).build());
+        Report report = reportRepository.save(Report.builder()
+                .reporter(reporter).targetType(ReportTargetType.POST).targetId(post.getId())
+                .targetUser(target).reason(ReportReason.ABUSE).detail(null).build());
+        String token = adminToken();
+
+        mvc.perform(post("/admin/users/" + target.getId() + "/blocks")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"reason":"약관 위반"}
+                                """))
+                .andExpect(status().isOk());
+
+        mvc.perform(patch("/admin/reports/" + report.getId())
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"status":"VALID"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.appliedSanction.type").value("WARNING"));
+        entityManager.clear();
+
+        mvc.perform(get("/admin/users/" + target.getId()).header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("BLOCKED"));
     }
 }

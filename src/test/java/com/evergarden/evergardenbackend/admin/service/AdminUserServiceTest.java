@@ -118,11 +118,11 @@ class AdminUserServiceTest {
     }
 
     @Test
-    @DisplayName("경고는 상태를 WARNED로 바꾸고 사유를 담은 제재를 남기고 알림을 보낸다")
+    @DisplayName("경고는 상태를 WARNED로 바꾸는 원자적 쿼리를 부르고 사유를 담은 제재를 남기고 알림을 보낸다")
     void 경고() {
         SanctionResponse result = service.warnUser(ADMIN_ID, 1L, "정책 위반");
 
-        assertThat(user.getStatus()).isEqualTo(UserStatus.WARNED);
+        verify(userRepository).warnIfNotBlocked(1L);
         assertThat(result.type()).isEqualTo(SanctionType.WARNING);
         assertThat(result.reason()).isEqualTo("정책 위반");
         verify(notificationService).notify(
