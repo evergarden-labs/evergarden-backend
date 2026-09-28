@@ -106,15 +106,16 @@ public class AdminReportService {
     /**
      * 임계값(1회 경고, 3회 차단)에 정확히 닿았을 때만 제재를 건다. 그 밖엔 {@code null}.
      *
-     * <p>상태 변경도 {@code user.warn()/.block()} 대신 {@code userRepository.updateStatus()}
-     * (원자적 {@code UPDATE})로 한다 — 엔티티를 메모리에서 바꾸고 더티 체킹으로 flush하면
-     * {@code @DynamicUpdate}가 없는 이 엔티티는 매핑된 모든 컬럼을 다시 쓰기 때문에,
-     * 방금 {@link #reviewReport}가 원자적으로 늘려둔 {@code validReportCount}를
-     * 이 엔티티가 로드됐을 때의 낡은 값으로 덮어써 버릴 수 있다.
+     * <p>상태 변경도 {@code user.warn()/.block()} 대신 원자적 {@code UPDATE}로 한다 —
+     * 엔티티를 메모리에서 바꾸고 더티 체킹으로 flush하면 {@code @DynamicUpdate}가 없는 이
+     * 엔티티는 매핑된 모든 컬럼을 다시 쓰기 때문에, 방금 {@link #reviewReport}가 원자적으로
+     * 늘려둔 {@code validReportCount}를 이 엔티티가 로드됐을 때의 낡은 값으로 덮어써
+     * 버릴 수 있다. 경고 쪽은 {@code updateStatus}가 아니라 {@code warnIfNotBlocked}를
+     * 쓴다 — 이미 차단된 회원이 뒤늦게 1번째 유효 판정을 받아도 차단이 풀리면 안 된다(ADR-033).
      */
     private SanctionResponse applyAutomaticSanctionIfThreshold(User user, int validReportCount) {
         if (validReportCount == WARNING_THRESHOLD) {
-            userRepository.updateStatus(user.getId(), UserStatus.WARNED);
+            userRepository.warnIfNotBlocked(user.getId());
             Sanction sanction = sanctionRepository.save(
                     Sanction.automatic(user, SanctionType.WARNING, "유효 신고 누적 " + validReportCount + "회"));
             notificationService.notify(user, NotificationType.WARNING, "경고 안내",

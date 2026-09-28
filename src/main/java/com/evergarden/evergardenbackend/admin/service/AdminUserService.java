@@ -58,12 +58,16 @@ public class AdminUserService {
 
     /**
      * 관리자가 재량으로 경고한다(ADMIN-04). 신고 누적 자동 경고(ADMIN-10)와는 별개 경로다.
+     *
+     * <p>이미 차단된 회원이면 상태는 {@code BLOCKED}로 그대로 두고 이력만 남긴다
+     * ({@link UserRepository#warnIfNotBlocked}) — 차단은 별도 해제 오퍼레이션(ADMIN-11)으로만
+     * 풀려야 하는데, {@code User.warn()}으로 바로 덮어쓰면 그 규칙이 깨진다(ADR-033).
      */
     @Transactional
     public SanctionResponse warnUser(Long adminId, Long userId, String reason) {
         User user = findUser(userId);
         Admin admin = adminRepository.getReferenceById(adminId);
-        user.warn();
+        userRepository.warnIfNotBlocked(userId);
         Sanction sanction = sanctionRepository.save(Sanction.byAdmin(user, SanctionType.WARNING, reason, admin));
         notificationService.notify(user, NotificationType.WARNING, "경고 안내", reason, null, null);
         return SanctionResponse.of(sanction);
