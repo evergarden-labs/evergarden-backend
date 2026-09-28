@@ -3,6 +3,7 @@ package com.evergarden.evergardenbackend.community.entity;
 import com.evergarden.evergardenbackend.archive.entity.Archive;
 import com.evergarden.evergardenbackend.global.entity.BaseTimeEntity;
 import com.evergarden.evergardenbackend.trip.entity.Trip;
+import com.evergarden.evergardenbackend.user.entity.Admin;
 import com.evergarden.evergardenbackend.user.entity.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -69,6 +70,14 @@ public class Post extends BaseTimeEntity {
     @Column(nullable = false, length = 10)
     private PostStatus status;
 
+    /** 관리자가 강제 삭제했으면 그 관리자(ADMIN-06). 작성자 본인 삭제(COMM-06)면 {@code null} */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "deleted_by_admin_id")
+    private Admin deletedByAdmin;
+
+    @Column(name = "delete_reason", length = 200)
+    private String deleteReason;
+
     @Builder
     private Post(User author, String content, ShareType shareType, Trip sharedTrip, Archive sharedArchive) {
         this.author = author;
@@ -93,6 +102,16 @@ public class Post extends BaseTimeEntity {
 
     public void delete() {
         this.status = PostStatus.DELETED;
+    }
+
+    /**
+     * 관리자가 정책 위반으로 강제 삭제한다(ADMIN-06). 작성자 본인 삭제(COMM-06)와 달리
+     * 누가 왜 지웠는지를 같이 남긴다.
+     */
+    public void adminDelete(Admin admin, String reason) {
+        this.status = PostStatus.DELETED;
+        this.deletedByAdmin = admin;
+        this.deleteReason = reason;
     }
 
     public boolean isDeleted() {
