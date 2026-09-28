@@ -8,6 +8,7 @@ import com.evergarden.evergardenbackend.notification.dto.UnreadCount;
 import com.evergarden.evergardenbackend.notification.dto.UpdateNotificationSettingsRequest;
 import com.evergarden.evergardenbackend.notification.entity.Notification;
 import com.evergarden.evergardenbackend.notification.entity.NotificationSetting;
+import com.evergarden.evergardenbackend.notification.entity.NotificationSettingId;
 import com.evergarden.evergardenbackend.notification.entity.NotificationType;
 import com.evergarden.evergardenbackend.notification.repository.NotificationRepository;
 import com.evergarden.evergardenbackend.notification.repository.NotificationSettingRepository;
@@ -17,6 +18,7 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -89,6 +91,11 @@ public class NotificationQueryService {
      * 바꿔 던진다 — {@code NotificationSetting.changeEnabled()}가 이 경우 {@code IllegalStateException}을
      * 던지는데, 그대로 두면 처리 안 된 예외로 500이 된다(AUTH의 {@code refreshToken}에서 정확히
      * 같은 패턴으로 실제 겪은 문제라 반드시 먼저 확인한다).
+     *
+     * <p>새 행 저장은 동시에 같은 (user, type)을 처음 건드리는 두 요청 사이에서 경합할 수 있다
+     * (ADR-006). 다만 이건 {@code PostService.like()}의 중복 좋아요와 달리 "같은 사용자가
+     * 같은 값을 두 번 보낸 것"에 가까워 클라이언트 에러로 되돌려줄 이유가 없다 — 제약 위반을
+     * 잡으면 이미 만들어진 행을 다시 읽어 {@code changeEnabled()}로 원하던 값을 적용한다.
      */
     @Transactional
     public List<NotificationSettingResponse> updateNotificationSettings(
@@ -102,12 +109,24 @@ public class NotificationQueryService {
             if (setting != null) {
                 setting.changeEnabled(item.enabled());
             } else {
-                setting = notificationSettingRepository.save(new NotificationSetting(
-                        userRepository.getReferenceById(userId), item.type(), item.enabled()));
+                setting = saveNewSettingOrApplyExisting(userId, item.type(), item.enabled());
                 byType.put(item.type(), setting);
             }
         }
         return toResponses(byType);
+    }
+
+    private NotificationSetting saveNewSettingOrApplyExisting(Long userId, NotificationType type, boolean enabled) {
+        try {
+            return notificationSettingRepository.saveAndFlush(
+                    new NotificationSetting(userRepository.getReferenceById(userId), type, enabled));
+        } catch (DataIntegrityViolationException e) {
+            NotificationSetting existing = notificationSettingRepository
+                    .findById(new NotificationSettingId(userId, type))
+                    .orElseThrow(() -> e);
+            existing.changeEnabled(enabled);
+            return existing;
+        }
     }
 
     private Map<NotificationType, NotificationSetting> settingsByType(Long userId) {
