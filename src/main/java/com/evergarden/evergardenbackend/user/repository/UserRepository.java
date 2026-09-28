@@ -64,4 +64,19 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Modifying
     @Query("UPDATE User u SET u.status = :status WHERE u.id = :userId")
     void updateStatus(@Param("userId") Long userId, @Param("status") UserStatus status);
+
+    /**
+     * 이미 차단된 회원이 아닐 때만 경고 상태로 바꾼다(ADMIN-04·10). 관리자가 재량으로
+     * 거는 수동 경고와, 유효 신고 누적 1회 자동 경고 둘 다 이 메서드를 쓴다.
+     *
+     * <p>{@code User.warn()}은 현재 상태를 안 가리고 무조건 {@code WARNED}로 덮어써서,
+     * 이미 {@code BLOCKED}인 회원에게 경고를 걸면 차단이 조용히 풀려버렸다(실전에서 발견 —
+     * ADR-033이 "차단은 관리자가 직접 풀 때까지 유지"라고 못박은 것과 어긋남). 조건을
+     * {@code WHERE}에 넣어 검사와 반영을 한 문장으로 묶었다 — 따로 조회해서 확인한 뒤
+     * 반영하면 그 사이 다른 트랜잭션이 막 차단을 걸었을 때 같은 문제가 경합으로 재현될 수 있다.
+     */
+    @Modifying
+    @Query("UPDATE User u SET u.status = com.evergarden.evergardenbackend.user.entity.UserStatus.WARNED "
+            + "WHERE u.id = :userId AND u.status <> com.evergarden.evergardenbackend.user.entity.UserStatus.BLOCKED")
+    void warnIfNotBlocked(@Param("userId") Long userId);
 }
