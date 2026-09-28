@@ -2,19 +2,27 @@ package com.evergarden.evergardenbackend.notification.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.evergarden.evergardenbackend.global.exception.BusinessException;
 import com.evergarden.evergardenbackend.global.exception.ErrorCode;
 import com.evergarden.evergardenbackend.notification.dto.NotificationResponse;
+import com.evergarden.evergardenbackend.notification.dto.NotificationSettingResponse;
 import com.evergarden.evergardenbackend.notification.dto.UnreadCount;
+import com.evergarden.evergardenbackend.notification.dto.UpdateNotificationSettingsRequest;
 import com.evergarden.evergardenbackend.notification.entity.Notification;
+import com.evergarden.evergardenbackend.notification.entity.NotificationSetting;
 import com.evergarden.evergardenbackend.notification.entity.NotificationTargetType;
 import com.evergarden.evergardenbackend.notification.entity.NotificationType;
 import com.evergarden.evergardenbackend.notification.repository.NotificationRepository;
+import com.evergarden.evergardenbackend.notification.repository.NotificationSettingRepository;
 import com.evergarden.evergardenbackend.user.entity.User;
+import com.evergarden.evergardenbackend.user.repository.UserRepository;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -25,11 +33,14 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 
-/** 알림 목록·배지·읽음 처리(NOTI-01·02·04·05·06)를 다룬다. */
+/** 알림 목록·배지·읽음 처리·설정(NOTI-01~06)을 다룬다. */
 class NotificationQueryServiceTest {
 
     private final NotificationRepository notificationRepository = mock(NotificationRepository.class);
-    private final NotificationQueryService service = new NotificationQueryService(notificationRepository);
+    private final NotificationSettingRepository notificationSettingRepository = mock(NotificationSettingRepository.class);
+    private final UserRepository userRepository = mock(UserRepository.class);
+    private final NotificationQueryService service =
+            new NotificationQueryService(notificationRepository, notificationSettingRepository, userRepository);
 
     private User receiver() {
         User user = User.builder().nickname("여행자").build();
@@ -137,5 +148,83 @@ class NotificationQueryServiceTest {
 
         assertThat(result.unreadCount()).isZero();
         verify(notificationRepository).markAllAsRead(1L);
+    }
+
+    // ── 알림 설정 ────────────────────────────────────────────
+
+    @Test
+    @DisplayName("손댄 적 없으면 전체 종류가 다 켜진 상태로 나온다 — WARNING만 editable=false")
+    void 설정_조회_기본값() {
+        given(notificationSettingRepository.findByUser_Id(1L)).willReturn(List.of());
+
+        List<NotificationSettingResponse> result = service.getNotificationSettings(1L);
+
+        assertThat(result).hasSize(NotificationType.values().length);
+        assertThat(result).allMatch(NotificationSettingResponse::enabled);
+        assertThat(result).filteredOn(r -> r.type() == NotificationType.WARNING)
+                .extracting(NotificationSettingResponse::editable).containsExactly(false);
+        assertThat(result).filteredOn(r -> r.type() != NotificationType.WARNING)
+                .extracting(NotificationSettingResponse::editable).containsOnly(true);
+    }
+
+    @Test
+    @DisplayName("행이 있는 종류는 그 값을, 없는 종류는 기본값을 섞어서 돌려준다")
+    void 설정_조회_병합() {
+        User user = receiver();
+        NotificationSetting inviteOff = new NotificationSetting(user, NotificationType.COLLAB_INVITE, false);
+        given(notificationSettingRepository.findByUser_Id(1L)).willReturn(List.of(inviteOff));
+
+        List<NotificationSettingResponse> result = service.getNotificationSettings(1L);
+
+        assertThat(result).filteredOn(r -> r.type() == NotificationType.COLLAB_INVITE)
+                .extracting(NotificationSettingResponse::enabled).containsExactly(false);
+        assertThat(result).filteredOn(r -> r.type() == NotificationType.CAPSULE_UNLOCK)
+                .extracting(NotificationSettingResponse::enabled).containsExactly(true);
+    }
+
+    @Test
+    @DisplayName("기존 행이 있으면 changeEnabled로 바꾼다")
+    void 설정_변경_기존행() {
+        User user = receiver();
+        NotificationSetting invite = new NotificationSetting(user, NotificationType.COLLAB_INVITE, true);
+        given(notificationSettingRepository.findByUser_Id(1L)).willReturn(List.of(invite));
+        UpdateNotificationSettingsRequest request =
+                new UpdateNotificationSettingsRequest(List.of(new UpdateNotificationSettingsRequest.Item(
+                        NotificationType.COLLAB_INVITE, false)));
+
+        List<NotificationSettingResponse> result = service.updateNotificationSettings(1L, request);
+
+        assertThat(invite.isEnabled()).isFalse();
+        assertThat(result).filteredOn(r -> r.type() == NotificationType.COLLAB_INVITE)
+                .extracting(NotificationSettingResponse::enabled).containsExactly(false);
+        verify(notificationSettingRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("행이 없던 종류를 새로 켜거나 끄면 새로 만든다")
+    void 설정_변경_신규행() {
+        given(notificationSettingRepository.findByUser_Id(1L)).willReturn(List.of());
+        given(userRepository.getReferenceById(1L)).willReturn(receiver());
+        UpdateNotificationSettingsRequest request =
+                new UpdateNotificationSettingsRequest(List.of(new UpdateNotificationSettingsRequest.Item(
+                        NotificationType.CAPSULE_UNLOCK, false)));
+
+        service.updateNotificationSettings(1L, request);
+
+        verify(notificationSettingRepository).save(argThat(
+                setting -> setting.getType() == NotificationType.CAPSULE_UNLOCK && !setting.isEnabled()));
+    }
+
+    @Test
+    @DisplayName("WARNING을 끄려 하면 INVALID_REQUEST — 엔티티 예외에 기대지 않는다")
+    void 설정_변경_경고끄기_거절() {
+        given(notificationSettingRepository.findByUser_Id(1L)).willReturn(List.of());
+        UpdateNotificationSettingsRequest request =
+                new UpdateNotificationSettingsRequest(List.of(new UpdateNotificationSettingsRequest.Item(
+                        NotificationType.WARNING, false)));
+
+        assertThatThrownBy(() -> service.updateNotificationSettings(1L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_REQUEST);
     }
 }
