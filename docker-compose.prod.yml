@@ -46,6 +46,10 @@ services:
     # DB_URL은 RDS 엔드포인트를 가리킨다 — 이 컨테이너 네트워크 밖(VPC)으로 나가는 평범한
     # 외부 연결이라 Postgres 서비스처럼 depends_on으로 묶을 대상이 없다.
     # AWS 자격증명은 여기 안 넣는다 — EC2 인스턴스 역할로 해결한다(S3Config 참고).
+    environment:
+      # application.yml의 기본 프로필은 dev다. 명시하지 않으면 운영에서도 dev로
+      # 뜨면서 application.properties의 값 대신 로컬 기본값(localhost 등)을 보게 된다.
+      - SPRING_PROFILES_ACTIVE=prod
 
   caddy:
     image: caddy:2-alpine
