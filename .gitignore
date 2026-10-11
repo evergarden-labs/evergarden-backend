@@ -45,3 +45,6 @@ out/
 
 ### Local application config ###
 src/main/resources/application.properties
+
+### 운영 서버의 실제 호스트명 노출 방지 (퍼블릭 리포) ###
+Caddyfile
