@@ -94,7 +94,7 @@
 | | |
 |---|---|
 | Spring Boot 4.1.1 · Java 21 · Gradle | |
-| PostgreSQL 16 | 스키마는 Flyway가 관리한다 |
+| PostgreSQL 18 | 스키마는 Flyway가 관리한다 |
 | Redis 7 | 리프레시 토큰, 콘텐츠랩 응답 캐시 |
 | S3 | 사진·영상. presigned URL로 앱이 직접 올린다 |
 | WebSocket (STOMP) | 아카이브 실시간 공동 편집 |

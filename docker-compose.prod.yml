@@ -1,0 +1,66 @@
+# EC2 운영 배포용. 로컬 개발은 docker-compose.yml(Postgres·Redis만)을 그대로 쓴다.
+#
+# Postgres는 여기서 안 띄운다 — RDS(관리형)를 쓴다. 자동 백업·PITR이 기본으로
+# 되고, 이 인스턴스의 메모리를 앱·Redis·Caddy가 나눠 쓰는 데도 여유가 생긴다.
+# Redis는 리프레시 토큰만 담는 낮은 중요도라 그대로 이 인스턴스에서 띄운다.
+#
+# 환경변수는 전부 src/main/resources/application.properties 하나에 모은다 —
+# .env는 안 둔다. 여기서 더 이상 Postgres를 안 띄우니 compose 파일 자체가
+# 읽어야 할 변수가 없어져서, --env-file 없이 평범하게 실행하면 된다.
+#
+# 실행 전 체크리스트:
+#   1. application.properties의 DB_URL을 RDS 엔드포인트로 채운다
+#      (jdbc:postgresql://<RDS 엔드포인트>:5432/evergarden)
+#   2. EC2의 보안 그룹에서 RDS로 5432 아웃바운드가 막혀 있지 않은지,
+#      RDS 보안 그룹이 이 EC2 인스턴스에서 들어오는 5432를 허용하는지 확인
+#   3. Caddyfile이 로컬에 있는지 확인(.gitignore 대상이라 서버에서 직접 만들어야 함)
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# name을 따로 줘서 docker-compose.yml(로컬 dev용)과 프로젝트 자체를 분리한다.
+# 실제로 겪은 문제라 반드시 필요하다 — Compose는 컨테이너를 "프로젝트 + 서비스 이름"으로
+# 추적하는데, 두 compose 파일이 같은 디렉터리에 있으면 기본 프로젝트명이 같아져서
+# service: redis가 "같은 컨테이너"로 취급되어 dev 컨테이너가 지워지고
+# prod 것으로 교체되는 걸 직접 겪었다.
+name: evergarden-prod
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: evergarden-redis-prod
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    container_name: evergarden-app-prod
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    # 설정은 빌드 시점에 JAR 안에 이미 포함되어 있다(src/main/resources/application.properties).
+    # DB_URL은 RDS 엔드포인트를 가리킨다 — 이 컨테이너 네트워크 밖(VPC)으로 나가는 평범한
+    # 외부 연결이라 Postgres 서비스처럼 depends_on으로 묶을 대상이 없다.
+    # AWS 자격증명은 여기 안 넣는다 — EC2 인스턴스 역할로 해결한다(S3Config 참고).
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: evergarden-caddy-prod
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data-prod:/data
+      - caddy-config-prod:/config
+
+volumes:
+  caddy-data-prod:
+  caddy-config-prod:

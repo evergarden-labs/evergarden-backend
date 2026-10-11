@@ -1,0 +1,21 @@
+# 운영 리버스 프록시 템플릿. 실제 Caddyfile은 .gitignore에 있다 — 서버의
+# 실제 주소(퍼블릭 IP가 그대로 드러나는 AWS 호스트명, 또는 나중에 살 도메인)가
+# 퍼블릭 리포에 그대로 노출되는 걸 막기 위해서다.
+#
+#   cp Caddyfile.example Caddyfile
+#   (아래 주소를 실제 EC2 퍼블릭 DNS 또는 구매한 도메인으로 바꾼다)
+#
+# Caddy가 Let's Encrypt 인증서 발급·갱신을 알아서 한다 — 80/443만 열려 있으면 된다.
+your-domain-or-ec2-public-dns-here {
+	reverse_proxy app:8080
+
+	# STOMP WebSocket(아카이브 공동 편집, ARCH-12)도 같은 프록시를 탄다.
+	# reverse_proxy가 Upgrade/Connection 헤더를 자동으로 넘겨주므로 별도 설정은 없다.
+
+	encode gzip
+
+	log {
+		output stdout
+		format console
+	}
+}
