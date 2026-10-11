@@ -17,6 +17,17 @@ springdoc:
     disable-swagger-default-url: true    # 운영에선 예제 URL을 막는다
   show-actuator: false                   # 운영에선 actuator를 문서에 노출하지 않는다
 
+# Redis
+# 공통 설정(application.yml)은 ssl.enabled: true가 기본이다 — 관리형 TLS Redis를
+# 쓰는 게 기본값이어야 한다는 뜻. 하지만 이 프로젝트는 운영에서도 EC2 인스턴스 안에
+# Redis를 직접 띄우고(docker-compose.prod.yml), TLS를 따로 구성하지 않았다.
+# 덮어쓰지 않으면 리프레시 토큰을 저장하는 첫 요청에서 연결이 실패한다.
+spring:
+  data:
+    redis:
+      ssl:
+        enabled: ${REDIS_SSL:false}
+
 # Logging
 logging:
   level:
