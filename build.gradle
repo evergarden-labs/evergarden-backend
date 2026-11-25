@@ -83,3 +83,13 @@ dependencies {
 tasks.named('test') {
     useJUnitPlatform()
 }
+
+// 운영 DB에 첫 관리자 계정을 넣기 위한 BCrypt 해시 생성 — 일회성 도구(docs/decisions.md 참고 불필요,
+// 운영 코드 경로와 무관한 평범한 main). 사용법:
+//   ./gradlew generateAdminHash --args="로그인ID 비밀번호 담당자이름"
+tasks.register('generateAdminHash', JavaExec) {
+    group = 'admin'
+    description = '운영 관리자 계정용 BCrypt 해시와 INSERT SQL을 생성한다'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.evergarden.evergardenbackend.tools.GenerateAdminPasswordHash'
+}
