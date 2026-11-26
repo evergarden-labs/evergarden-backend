@@ -51,6 +51,9 @@ public class SecurityConfig {
             "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/evergardenapi.yaml"
     };
 
+    /** 헬스체크. 인증 없이 떠 있는지부터 확인해야 하므로 토큰을 요구하지 않는다. */
+    private static final String HEALTH = "/actuator/health";
+
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final JwtAuthenticationEntryPoint authenticationEntryPoint;
     private final JwtAccessDeniedHandler accessDeniedHandler;
@@ -70,6 +73,7 @@ public class SecurityConfig {
 
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(DOCS).permitAll()
+                        .requestMatchers(HEALTH).permitAll()
                         .requestMatchers(HttpMethod.POST, PUBLIC_POST).permitAll()
                         // ADR-036 — 관리자 판별은 토큰의 역할 클레임으로 한다
                         .requestMatchers("/admin/**").hasRole(Role.ADMIN.name())
