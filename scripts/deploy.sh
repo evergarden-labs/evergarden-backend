@@ -20,6 +20,11 @@ echo "3. 기동 확인 (최대 30초 대기)"
 for _ in $(seq 1 15); do
     if curl -sf https://evergarden-api.space/actuator/health > /dev/null; then
         echo "배포 완료 — 헬스체크 통과"
+        echo "4. 옛 이미지·빌드 캐시 정리 (디스크 공간이 작아 매 배포마다 치워야 한다)"
+        # 지금 떠 있는 컨테이너가 쓰는 이미지는 안 지워진다. 실패했을 때는 이 단계를
+        # 건너뛴다 — 롤백할 때 쓸 이전 이미지를 건드리지 않기 위해서다
+        docker image prune -af
+        docker builder prune -af
         exit 0
     fi
     sleep 2
