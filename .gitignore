@@ -46,5 +46,5 @@ out/
 ### Local application config ###
 src/main/resources/application.properties
 
-### 운영 서버의 실제 호스트명 노출 방지 (퍼블릭 리포) ###
-Caddyfile
+### blue/green 중 지금 운영 중인 쪽을 기록 (EC2에만 있는 상태) ###
+.active-color

@@ -18,6 +18,12 @@ RUN ./gradlew bootJar --no-daemon -x test
 FROM eclipse-temurin:21-jre-jammy
 WORKDIR /app
 
+# blue/green 전환 때 호스트에 포트를 안 열어두고 컨테이너 안에서 직접
+# `docker compose exec`로 헬스체크를 쏴야 해서 curl이 필요하다 — 기본
+# JRE 이미지엔 안 들어있다.
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
 # 컨테이너가 뚫려도 루트 권한을 안 주기 위해 전용 유저로 실행한다.
 RUN groupadd -r evergarden && useradd -r -g evergarden evergarden
 COPY --from=build /workspace/build/libs/*-SNAPSHOT.jar app.jar
