@@ -108,15 +108,27 @@ class ArchiveEditorRegistryTest {
     }
 
     @Test
-    @DisplayName("ping이 없던 세션만 죽은 연결로 잡는다")
-    void ping_없는_세션만_stale() throws InterruptedException {
+    @DisplayName("갱신 안 된 세션만 죽은 연결로 잡는다")
+    void 갱신_없는_세션만_stale() throws InterruptedException {
         registry.subscribe("session-1", ARCHIVE_ID, USER_ID);
         registry.subscribe("session-2", ARCHIVE_ID, OTHER_USER_ID);
         Thread.sleep(50);
-        registry.ping("session-2");
+        registry.subscribe("session-2", ARCHIVE_ID, OTHER_USER_ID);   // ping 역할 — 생존 시각 갱신
 
         var stale = registry.staleSessions(Duration.ofMillis(20));
 
         assertThat(stale).containsExactly("session-1");
+    }
+
+    @Test
+    @DisplayName("쫓겨난 세션 ID로 다시 subscribe하면 복구되고, 다시 첫 연결로 취급된다")
+    void 쫓겨난_세션_재subscribe로_복구() {
+        registry.subscribe("session-1", ARCHIVE_ID, USER_ID);
+        registry.disconnect("session-1");   // 스케줄러가 타임아웃으로 쫓아낸 상황을 흉내
+
+        boolean revived = registry.subscribe("session-1", ARCHIVE_ID, USER_ID);
+
+        assertThat(revived).isTrue();
+        assertThat(registry.activeUserIds(ARCHIVE_ID)).containsExactly(USER_ID);
     }
 }

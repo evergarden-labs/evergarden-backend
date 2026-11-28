@@ -45,10 +45,6 @@ public class ArchiveEditorRegistry {
         return firstConnection;
     }
 
-    public void ping(String sessionId) {
-        lastPingAt.computeIfPresent(sessionId, (id, previous) -> Instant.now());
-    }
-
     /** 세션이 끊겼다. 그 사람의 마지막 연결이었으면 값을 돌려준다({@code editor.left} 발행 대상). */
     public Optional<LeftEditor> disconnect(String sessionId) {
         Session session = sessionsById.remove(sessionId);

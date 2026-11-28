@@ -8,6 +8,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.event.EventListener;
+import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.messaging.SessionDisconnectEvent;
@@ -39,11 +40,7 @@ public class ArchiveEditorPresenceListener {
         }
 
         boolean firstConnection = registry.subscribe(accessor.getSessionId(), archiveId, userId);
-        if (firstConnection) {
-            collaboratorRepository.findByArchive_IdAndUser_IdWithUser(archiveId, userId)
-                    .map(CollaboratorResponse::of)
-                    .ifPresent(payload -> messenger.send(archiveId, userId, "editor.joined", payload));
-        }
+        notifyJoinedIfFirst(archiveId, userId, firstConnection);
     }
 
     @EventListener
@@ -51,6 +48,20 @@ public class ArchiveEditorPresenceListener {
         StompHeaderAccessor accessor = StompHeaderAccessor.wrap(event.getMessage());
         registry.disconnect(accessor.getSessionId()).ifPresent(left ->
                 messenger.send(left.archiveId(), left.userId(), "editor.left", Map.of("userId", left.userId())));
+    }
+
+    /**
+     * {@code registry.subscribe()}가 "첫 연결"(true)이라고 하면 {@code editor.joined}를 쏜다.
+     * 늦은 ping으로 끊긴 세션이 복구될 때도 똑같이 적용해야 해서 {@link ArchivePingController}와
+     * 공유한다.
+     */
+    void notifyJoinedIfFirst(Long archiveId, Long userId, boolean firstConnection) {
+        if (!firstConnection) {
+            return;
+        }
+        collaboratorRepository.findByArchive_IdAndUser_IdWithUser(archiveId, userId)
+                .map(CollaboratorResponse::of)
+                .ifPresent(payload -> messenger.send(archiveId, userId, "editor.joined", payload));
     }
 
     private Long archiveIdOf(String destination) {
@@ -61,7 +72,8 @@ public class ArchiveEditorPresenceListener {
         return matcher.matches() ? Long.valueOf(matcher.group(1)) : null;
     }
 
-    private Long userIdOf(StompHeaderAccessor accessor) {
+    /** {@code ArchivePingController}도 쓴다 — ping 메시지와 구독 이벤트 둘 다 이 타입으로 받을 수 있다. */
+    Long userIdOf(SimpMessageHeaderAccessor accessor) {
         if (!(accessor.getUser() instanceof StompPrincipal principal)) {
             return null;
         }
