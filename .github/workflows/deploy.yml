@@ -49,5 +49,13 @@ jobs:
       - name: GHCR 로그인 (패키지가 비공개라 pull에 필요)
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
+      - name: 최신 코드 받기
+        # deploy.sh 안에서 git pull을 하면, 실행 중인 그 스크립트 파일 자신을
+        # 덮어쓰게 된다 — 리눅스에서는 실행 중인 파일이 교체돼도 이미 열어서
+        # 읽던 프로세스는 옛 내용을 계속 읽기 때문에, 스크립트 뒷부분이 업데이트
+        # 전 내용으로 실행되는 사고가 실제로 있었다. 그래서 git pull은 deploy.sh를
+        # "실행하기 전에" 별도 단계로 분리한다.
+        run: cd ~/evergarden-backend && git pull origin main
+
       - name: Deploy
         run: ~/evergarden-backend/scripts/deploy.sh
