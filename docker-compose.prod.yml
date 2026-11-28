@@ -26,6 +26,12 @@
 #
 #   docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d
 #
+# app은 blue/green 두 개로 떠 있다(scripts/deploy.sh). 평소엔 둘 중 하나만
+# 켜져 있고, 배포할 때만 꺼져 있던 쪽을 새 이미지로 잠깐 같이 띄워서 헬스체크
+# 통과시킨 뒤 Caddy를 그쪽으로 돌리고, 그제서야 이전 쪽을 끈다 — 그래서
+# "구버전 종료 → 신버전 기동" 사이의 공백이 없다. 두 서비스는 완전히 대칭이라
+# 설정이 똑같고 container_name·서비스 이름만 다르다.
+#
 # name을 따로 줘서 docker-compose.yml(로컬 dev용)과 프로젝트 자체를 분리한다.
 # 실제로 겪은 문제라 반드시 필요하다 — Compose는 컨테이너를 "프로젝트 + 서비스 이름"으로
 # 추적하는데, 두 compose 파일이 같은 디렉터리에 있으면 기본 프로젝트명이 같아져서
@@ -44,9 +50,9 @@ services:
       timeout: 3s
       retries: 10
 
-  app:
+  app-blue:
     image: ghcr.io/evergarden-labs/evergarden-backend:latest
-    container_name: evergarden-app-prod
+    container_name: evergarden-app-blue
     restart: unless-stopped
     depends_on:
       redis:
@@ -63,12 +69,27 @@ services:
       # 뜨면서 application.properties의 값 대신 로컬 기본값(localhost 등)을 보게 된다.
       - SPRING_PROFILES_ACTIVE=prod
 
+  app-green:
+    image: ghcr.io/evergarden-labs/evergarden-backend:latest
+    container_name: evergarden-app-green
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file:
+      - src/main/resources/application.properties
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+
   caddy:
     image: caddy:2-alpine
     container_name: evergarden-caddy-prod
     restart: unless-stopped
-    depends_on:
-      - app
+    # app-blue/app-green 둘 다는 안 적는다 — `docker compose up -d`를 인자 없이
+    # 치면 depends_on에 적힌 서비스까지 전부 같이 띄워버린다. 평소엔 둘 중
+    # 하나만 켜져 있어야 하니, deploy.sh가 매번 띄울 쪽을 직접 지정한다
+    # (예: `docker compose up -d app-green`). Caddy는 reverse_proxy 대상에
+    # 연결을 요청 시점에 맺으니 시작 순서를 강제할 필요도 없다.
     ports:
       - "80:80"
       - "443:443"

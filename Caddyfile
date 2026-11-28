@@ -1,0 +1,18 @@
+# 운영 리버스 프록시. AWS 기본 퍼블릭 DNS(*.compute.amazonaws.com)는 Let's Encrypt가
+# 정책상 인증서 발급을 거부해서 실제 도메인(evergarden-api.space)을 구매해 쓴다.
+# Caddy가 Let's Encrypt 인증서 발급·갱신을 알아서 한다 — 80/443만 열려 있으면 된다.
+evergarden-api.space {
+	# deploy.sh가 blue/green 전환마다 이 줄의 대상을 app-blue ↔ app-green으로
+	# sed로 바꿔 쓰고 caddy reload로 적용한다. 기본값은 app-blue.
+	reverse_proxy app-blue:8080
+
+	# STOMP WebSocket(아카이브 공동 편집, ARCH-12)도 같은 프록시를 탄다.
+	# reverse_proxy가 Upgrade/Connection 헤더를 자동으로 넘겨주므로 별도 설정은 없다.
+
+	encode gzip
+
+	log {
+		output stdout
+		format console
+	}
+}
