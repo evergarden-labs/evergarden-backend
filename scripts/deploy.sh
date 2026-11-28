@@ -11,8 +11,12 @@ cd "$(dirname "$0")/.."
 echo "1. 최신 코드 받기"
 git pull origin main
 
-echo "2. 이미지 빌드 + 재기동"
-docker compose -f docker-compose.prod.yml up -d --build
+echo "2. 최신 이미지 받기 + 재기동"
+# GitHub Actions의 호스팅 러너가 이미 빌드해서 GHCR에 올려둔 이미지를 받아오기만
+# 한다 — EC2가 직접 빌드하지 않는다(그래야 비밀값이 이미지에 안 박히고, EC2
+# CPU도 안 쓴다).
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
 
 echo "3. 기동 확인 (최대 30초 대기)"
 # app 컨테이너는 포트를 호스트에 열지 않는다(Caddy를 통해서만 들어온다) —
@@ -20,11 +24,11 @@ echo "3. 기동 확인 (최대 30초 대기)"
 for _ in $(seq 1 15); do
     if curl -sf https://evergarden-api.space/actuator/health > /dev/null; then
         echo "배포 완료 — 헬스체크 통과"
-        echo "4. 옛 이미지·빌드 캐시 정리 (디스크 공간이 작아 매 배포마다 치워야 한다)"
+        echo "4. 옛 이미지 정리 (디스크 공간이 작아 매 배포마다 치워야 한다)"
         # 지금 떠 있는 컨테이너가 쓰는 이미지는 안 지워진다. 실패했을 때는 이 단계를
-        # 건너뛴다 — 롤백할 때 쓸 이전 이미지를 건드리지 않기 위해서다
+        # 건너뛴다 — 롤백할 때 쓸 이전 이미지를 건드리지 않기 위해서다. 더 이상
+        # EC2에서 직접 빌드하지 않으니 builder prune은 필요 없다.
         docker image prune -af
-        docker builder prune -af
         exit 0
     fi
     sleep 2
