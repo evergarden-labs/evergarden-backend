@@ -20,8 +20,9 @@
 #   2. EC2의 보안 그룹에서 RDS로 5432 아웃바운드가 막혀 있지 않은지,
 #      RDS 보안 그룹이 이 EC2 인스턴스에서 들어오는 5432를 허용하는지 확인
 #   3. Caddyfile이 로컬에 있는지 확인(.gitignore 대상이라 서버에서 직접 만들어야 함)
-#   4. GHCR의 evergarden-backend 패키지가 Public인지 확인(처음 한 번) —
-#      Private이면 EC2가 로그인 없이 pull을 못 한다
+#   4. 패키지는 비공개다(organization이 Public을 막아둠) — 수동으로 pull하려면
+#      먼저 `docker login ghcr.io`가 돼 있어야 한다. deploy.yml의 deploy job은
+#      GITHUB_TOKEN으로 자동 로그인하니 평소엔 신경 안 써도 된다.
 #
 #   docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d
 #
